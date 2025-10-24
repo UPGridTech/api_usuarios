@@ -6,6 +6,7 @@ app = Flask(__name__)
 usuarios = [
     {"id": 1, "nome": "Jhennifer", "email": "jhennifer@email.com"},
     {"id": 2, "nome": "Samuel", "email": "samuel@email.com"}
+    {"id": 3, "nome": "Felipe", "email": "felipe@email.com"}
 ]
 
 # Rota raiz
@@ -54,3 +55,4 @@ def deletar_usuario(id):
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
+
