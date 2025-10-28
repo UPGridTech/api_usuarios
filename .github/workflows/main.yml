@@ -16,27 +16,28 @@ jobs:
         working-directory: terraform
         run: |
           terraform init
-          terraform apply -v "vm_count=1" --auto-aprove
-      - name: Get VM IP
-        id: vm
+      - name: apply terraform
+        run: |
+          terrafom apply -v "vm_count=1" --auto-aprove
+      - name: Obter todos os IPs das VMs
+        id: vm_ips
         working-directory: terraform
         run: |
-          VM_IP=$(terraform output -raw vm_ip 2>/dev/null || true)
-          if [ -z "$VM_IP" ]; then
-            echo "ERROR: terraform output 'vm_ip' is empty. Dumping outputs for debug:"
-            terraform output
-            exit 1
-          fi
-          echo "VM_IP=${VM_IP}" >> $GITHUB_ENV
+          VM_IPS=$(terraform output -json vm_ips | jq -r '.[]')
+          echo "VM_IPS=$VM_IPS" >> $GITHUB_ENV
+          echo "IPs das VMs: $VM_IPS"
 
-      - name: Run Ansible Playbook
+      - name: Rodar Ansible em cada VM
         run: |
-          IP="${{ env.VM_IP }}"
-          ansible-playbook playbooks/vm_setup.yml \
-            -i "${IP}," \
-            -u "root" \
-            --ask-pass \
-            --extra-vars "pr_branch=${{ github.head_ref }}" -v
+          for IP in $VM_IPS; do
+            echo "============================"
+            echo "Rodando Ansible em $IP"
+            ansible-playbook playbooks/setup_vm.yml \
+              -i "${IP}," \
+              -u "admin" \
+              --extra-vars "pr_branch=${{ github.head_ref }}"
+            echo "============================"
+          done
 
       - name: Healthcheck
         run: |
