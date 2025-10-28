@@ -5,7 +5,7 @@ app = Flask(__name__)
 # Simulação de um banco de dados (lista)
 usuarios = [
     {"id": 1, "nome": "Jhennifer", "email": "jhennifer@email.com"},
-    {"id": 2, "nome": "Samuel", "email": "samuel@email.com"}
+    {"id": 2, "nome": "Samuel", "email": "samuel@2email.com"}
     {"id": 3, "nome": "Felipe", "email": "felipeeee@email.com"}
 ]
 
