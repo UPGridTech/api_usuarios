@@ -25,7 +25,7 @@ jobs:
         run: |
           ansible-playbook playbooks/setup_vm.yml \
             -i "$VM_IP," \
-            --extra-vars "ansible_user=adminsenai@134" \
+            --extra-vars "ansible_user=admin" \
             --extra-vars "pr_branch=${{ github.head_ref }}"
       - name: Healthcheck
         run: |
