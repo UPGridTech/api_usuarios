@@ -1,0 +1,90 @@
+---
+- name: Configurar Cliente Local (Docker + Registro na API)
+  hosts: all
+  gather_facts: yes
+
+  vars:
+    register_api_url: "http://haproxy.upgrid.local:5000/register"
+
+  tasks:
+
+    - name: Atualizar cache de pacotes
+      apt:
+        update_cache: yes
+
+    - name: Atualizar todos os pacotes do sistema
+      apt:
+        upgrade: dist
+
+    - name: Instalar Git
+      apt:
+        name: git
+        state: present
+
+    - name: Instalar pré-requisitos do Docker
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+
+    - name: Adicionar chave GPG do Docker
+      get_url:
+        url: https://download.docker.com/linux/debian/gpg
+        dest: /usr/share/keyrings/docker-archive-keyring.gpg
+        mode: '0644'
+
+    - name: Adicionar repositório Docker
+      apt_repository:
+        repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable"
+        state: present
+        filename: docker
+
+    - name: Instalar Docker
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Garantir que Docker esteja ativo
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Registrar cliente na API
+      uri:
+        url: "{{ register_api_url }}"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "{{ ansible_hostname }}"
+          ip: "{{ ansible_ip }}"
+          port: 80
+          backend: "bk_web_apps"
+        status_code: 200,201,202,204
+        return_content: yes
+      register: register_response
+      retries: 4
+      delay: 5
+      until: register_response.status is defined and register_response.status in [200,201,202,204]
+
+    - name: Mostrar resultado do registro
+      debug:
+        msg:
+          - "Status HTTP: {{ register_response.status | default('no-status') }}"
+          - "Conteúdo: {{ register_response.content | default('no-content') }}"
+
+    - name: Falhar se registro não ocorreu
+      fail:
+        msg: "Registro falhou: HTTP={{ register_response.status | default('no-status')}}"
+      when: register_response.status not in [200,201,202,204]
