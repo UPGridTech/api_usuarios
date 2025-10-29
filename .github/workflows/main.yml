@@ -18,7 +18,7 @@ jobs:
           terraform init
       - name: apply terraform
         run: |
-          terraform apply -v "vm_count=1" --auto-aprove
+          terraform apply -var "vm_count=1" --auto-aprove
       - name: Obter todos os IPs das VMs
         id: vm_ips
         working-directory: terraform
@@ -34,7 +34,7 @@ jobs:
             echo "Rodando Ansible em $IP"
             ansible-playbook playbooks/setup_vm.yml \
               -i "${IP}," \
-              -u "admin" \
+              -u "root" \
               --extra-vars "pr_branch=${{ github.head_ref }}"
             echo "============================"
           done
