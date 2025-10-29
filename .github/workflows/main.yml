@@ -12,21 +12,35 @@ jobs:
     steps:
       - name: Checkout código da PR
         uses: actions/checkout@v4
+
+      - name: Set PR Workspace Name
+        run: echo "PR_WORKSPACE=pr-${GITHUB_EVENT_NUMBER}" >> $GITHUB_ENV
+
+      - name: Create PR Workspace
+        run: |
+          PR_WS="pr-${GITHUB_EVENT_NUMBER}"
+          curl --header "Authorization: Bearer $(cat ~/.terraform.d/credentials.tfrc.json | jq -r '.credentials["app.terraform.io"].token')" \
+               --header "Content-Type: application/vnd.api+json" \
+               --request POST \
+               --data '{ "data": { "type":"workspaces", "attributes": {"name":"'"$PR_WS"'" } } }' \
+               https://app.terraform.io/api/v2/organizations/${TF_ORG}/workspaces || true
+        shell: bash
+      
       - name: Terraform Init
-        working-directory: ${{ env.TF_WORKDIR }}
+        working-directory: terraform
         run: |
           terraform init -input=false \
-            -backend-config="organization=${TF_ORG}" \
+            -backend-config="organization=upgrid" \
             -backend-config="workspaces.name=pr-${GITHUB_EVENT_NUMBER}"
 
       - name: Terraform Apply (on PR open/sync)
         if: github.event.action != 'closed'
-        working-directory: ${{ env.TF_WORKDIR }}
+        working-directory: terraform
         run: terraform apply -auto-approve
 
       - name: Terraform Destroy (on PR closed)
         if: github.event.action == 'closed'
-        working-directory: ${{ env.TF_WORKDIR }}
+        working-directory: terraform
         run: |
           terraform destroy -auto-approve
           # opcional: apagar workspace via API
