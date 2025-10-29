@@ -58,3 +58,8 @@ resource "vsphere_virtual_machine" "virtualmachine" {
     }
   }
 
+  output "vm_ip" {
+  description = "IP da VM criada"
+  value       = [for vm in vsphere_virtual_machine.virtualmachine : vm.default_ip_address]
+}
+
