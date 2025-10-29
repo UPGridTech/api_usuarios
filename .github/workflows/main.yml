@@ -14,7 +14,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set PR Workspace Name
-        run: echo "PR_WORKSPACE=pr-${GITHUB_EVENT_NUMBER}" >> $GITHUB_ENV
+        run: echo "PR_WORKSPACE=pr-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
 
       - name: Create PR Workspace
         run: |
@@ -27,22 +27,22 @@ jobs:
         shell: bash
       
       - name: Terraform Init
-        working-directory: terraform
+        working-directory: ${{ env.TF_WORKDIR }}
         run: |
           terraform init -input=false \
-            -backend-config="organization=upgrid" \
-            -backend-config="workspaces.name=pr-${GITHUB_EVENT_NUMBER}"
+            -backend-config="organization=${TF_ORG}" \
+            -backend-config="workspaces.name=${PR_WORKSPACE}"
 
       - name: Terraform Apply (on PR open/sync)
         if: github.event.action != 'closed'
         working-directory: terraform
-        run: terraform apply -auto-approve
+        run: terraform apply -var "vm_count=1"-auto-approve
 
       - name: Terraform Destroy (on PR closed)
         if: github.event.action == 'closed'
         working-directory: terraform
         run: |
-          terraform destroy -auto-approve
+          terraform destroy -var "vm_count=1" -auto-approve
           # opcional: apagar workspace via API
           PR_WS="pr-${GITHUB_EVENT_NUMBER}"
           curl --header "Authorization: Bearer $TF_API_TOKEN" \
