@@ -32,6 +32,9 @@ jobs:
         if: github.event.action == 'closed'
         working-directory: terraform
         run: |
+          terraform init -input=false \
+            -backend-config="organization=upgrid" \
+            -backend-config="workspaces.name=${PR_WORKSPACE}"
           terraform destroy -var "vm_count=1" -auto-approve
           # opcional: apagar workspace via API
           PR_WS="pr-${GITHUB_EVENT_NUMBER}"
