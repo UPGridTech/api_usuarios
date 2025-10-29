@@ -23,7 +23,7 @@ jobs:
                --header "Content-Type: application/vnd.api+json" \
                --request POST \
                --data '{ "data": { "type":"workspaces", "attributes": {"name":"'"$PR_WS"'" } } }' \
-               https://app.terraform.io/api/v2/organizations/${TF_ORG}/workspaces || true
+               https://app.terraform.io/api/v2/organizations/upgrid/workspaces || true
         shell: bash
       
       - name: Terraform Init
