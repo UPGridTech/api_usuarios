@@ -18,7 +18,7 @@ jobs:
           terraform init
       - name: apply terraform
         run: |
-          terraform apply -var "vm_count=1" -auto-aprove
+          terraform apply -var "vm_count=1" -auto-approve
       - name: Obter todos os IPs das VMs
         id: vm_ips
         working-directory: terraform
