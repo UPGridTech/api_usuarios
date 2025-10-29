@@ -4,7 +4,7 @@ on:
   pull_request:
     branches:
       - dev
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, closed]
 
 jobs:
   build-and-run:
@@ -12,31 +12,62 @@ jobs:
     steps:
       - name: Checkout código da PR
         uses: actions/checkout@v4
-      - name: Deploy VM Terraform
-        working-directory: terraform
-        run: |
-          terraform init
-          terraform apply -v "vm_count=1" --auto-aprove
-      - name: Get VM IP
-        id: vm
-        working-directory: terraform
-        run: |
-          VM_IP=$(terraform output -raw vm_ip 2>/dev/null || true)
-          if [ -z "$VM_IP" ]; then
-            echo "ERROR: terraform output 'vm_ip' is empty. Dumping outputs for debug:"
-            terraform output
-            exit 1
-          fi
-          echo "VM_IP=${VM_IP}" >> $GITHUB_ENV
 
-      - name: Run Ansible Playbook
+      - name: Set PR Workspace Name
+        run: echo "PR_WORKSPACE=pr-${GITHUB_EVENT_NUMBER}" >> $GITHUB_ENV
+
+      - name: Create PR Workspace
         run: |
-          IP="${{ env.VM_IP }}"
-          ansible-playbook playbooks/vm_setup.yml \
-            -i "${IP}," \
-            -u "root" \
-            --ask-pass \
-            --extra-vars "pr_branch=${{ github.head_ref }}" -v
+          PR_WS="pr-${GITHUB_EVENT_NUMBER}"
+          curl --header "Authorization: Bearer $(cat ~/.terraform.d/credentials.tfrc.json | jq -r '.credentials["app.terraform.io"].token')" \
+               --header "Content-Type: application/vnd.api+json" \
+               --request POST \
+               --data '{ "data": { "type":"workspaces", "attributes": {"name":"'"$PR_WS"'" } } }' \
+               https://app.terraform.io/api/v2/organizations/${TF_ORG}/workspaces || true
+        shell: bash
+      
+      - name: Terraform Init
+        working-directory: terraform
+        run: |
+          terraform init -input=false \
+            -backend-config="organization=upgrid" \
+            -backend-config="workspaces.name=pr-${GITHUB_EVENT_NUMBER}"
+
+      - name: Terraform Apply (on PR open/sync)
+        if: github.event.action != 'closed'
+        working-directory: terraform
+        run: terraform apply -auto-approve
+
+      - name: Terraform Destroy (on PR closed)
+        if: github.event.action == 'closed'
+        working-directory: terraform
+        run: |
+          terraform destroy -auto-approve
+          # opcional: apagar workspace via API
+          PR_WS="pr-${GITHUB_EVENT_NUMBER}"
+          curl --header "Authorization: Bearer $TF_API_TOKEN" \
+               --header "Content-Type: application/vnd.api+json" \
+               --request DELETE \
+               https://app.terraform.io/api/v2/organizations/${TF_ORG}/workspaces/${PR_WS}
+      - name: Obter todos os IPs das VMs
+        id: vm_ips
+        working-directory: terraform
+        run: |
+          VM_IPS=$(terraform output -json vm_ip | jq -r '.[]')
+          echo "VM_IPS=$VM_IPS" >> $GITHUB_ENV
+          echo "IPs das VMs: $VM_IPS"
+
+      - name: Rodar Ansible em cada VM
+        run: |
+          for IP in $VM_IPS; do
+            echo "============================"
+            echo "Rodando Ansible em $IP"
+            ansible-playbook playbooks/setup_vm.yml \
+              -i "${IP}," \
+              -u "root" \
+              --extra-vars "pr_branch=${{ github.head_ref }}"
+            echo "============================"
+          done
 
       - name: Healthcheck
         run: |
