@@ -4,7 +4,7 @@ on:
   pull_request:
     branches:
       - dev
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, closed]
 
 jobs:
   build-and-run:
@@ -12,14 +12,29 @@ jobs:
     steps:
       - name: Checkout código da PR
         uses: actions/checkout@v4
-      - name: Deploy VM Terraform
-        working-directory: terraform
+      - name: Terraform Init
+        working-directory: ${{ env.TF_WORKDIR }}
         run: |
-          terraform init
-      - name: apply terraform
-        working-directory: terraform
+          terraform init -input=false \
+            -backend-config="organization=${TF_ORG}" \
+            -backend-config="workspaces.name=pr-${GITHUB_EVENT_NUMBER}"
+
+      - name: Terraform Apply (on PR open/sync)
+        if: github.event.action != 'closed'
+        working-directory: ${{ env.TF_WORKDIR }}
+        run: terraform apply -auto-approve
+
+      - name: Terraform Destroy (on PR closed)
+        if: github.event.action == 'closed'
+        working-directory: ${{ env.TF_WORKDIR }}
         run: |
-          terraform apply -var "vm_count=1" -auto-approve
+          terraform destroy -auto-approve
+          # opcional: apagar workspace via API
+          PR_WS="pr-${GITHUB_EVENT_NUMBER}"
+          curl --header "Authorization: Bearer $TF_API_TOKEN" \
+               --header "Content-Type: application/vnd.api+json" \
+               --request DELETE \
+               https://app.terraform.io/api/v2/organizations/${TF_ORG}/workspaces/${PR_WS}
       - name: Obter todos os IPs das VMs
         id: vm_ips
         working-directory: terraform
