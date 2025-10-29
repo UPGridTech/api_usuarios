@@ -23,7 +23,7 @@ jobs:
         id: vm_ips
         working-directory: terraform
         run: |
-          VM_IPS=$(terraform output -json vm_ips | jq -r '.[]')
+          VM_IPS=$(terraform output -json vm_ip | jq -r '.[]')
           echo "VM_IPS=$VM_IPS" >> $GITHUB_ENV
           echo "IPs das VMs: $VM_IPS"
 
