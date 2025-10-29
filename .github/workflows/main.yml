@@ -26,7 +26,7 @@ jobs:
       - name: Terraform Apply (on PR open/sync)
         if: github.event.action != 'closed'
         working-directory: terraform
-        run: terraform apply -var "vm_count=1"-auto-approve
+        run: terraform apply -var "vm_count=1" -auto-approve
 
       - name: Terraform Destroy (on PR closed)
         if: github.event.action == 'closed'
