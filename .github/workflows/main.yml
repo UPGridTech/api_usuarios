@@ -15,22 +15,12 @@ jobs:
 
       - name: Set PR Workspace Name
         run: echo "PR_WORKSPACE=pr-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
-
-      - name: Create PR Workspace
-        run: |
-          PR_WS="pr-${GITHUB_EVENT_NUMBER}"
-          curl --header "Authorization: Bearer $(cat ~/.terraform.d/credentials.tfrc.json | jq -r '.credentials["app.terraform.io"].token')" \
-               --header "Content-Type: application/vnd.api+json" \
-               --request POST \
-               --data '{ "data": { "type":"workspaces", "attributes": {"name":"'"$PR_WS"'" } } }' \
-               https://app.terraform.io/api/v2/organizations/upgrid/workspaces || true
-        shell: bash
       
       - name: Terraform Init
-        working-directory: ${{ env.TF_WORKDIR }}
+        working-directory: terraform
         run: |
           terraform init -input=false \
-            -backend-config="organization=${TF_ORG}" \
+            -backend-config="organization=upgrid" \
             -backend-config="workspaces.name=${PR_WORKSPACE}"
 
       - name: Terraform Apply (on PR open/sync)
