@@ -57,7 +57,7 @@ jobs:
           for IP in $VM_IPS; do
             echo "============================"
             echo "Rodando Ansible em $IP"
-            ansible-playbook setup_vm.yml \
+            ansible-playbook vm_setup.yml \
               -i "${IP}," \
               -u "root" \
               --extra-vars "pr_branch=${{ github.event.pull_request.number }}"
