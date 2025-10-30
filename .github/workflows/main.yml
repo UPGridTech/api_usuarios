@@ -16,15 +16,17 @@ jobs:
       - name: Set PR Workspace Name
         run: echo "PR_WORKSPACE=pr-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
 
-      #- name: Setup Workspace Terraform Cloud
-       # run: |
-        #  echo "Using workspace: $PR_WORKSPACE"
-         # curl \
-          #  --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-           # --header "Content-Type: application/vnd.api+json" \
-            #--request POST \
-            #--data "{\"data\":{\"attributes\":{\"name\":\"${PR_WORKSPACE}\"},\"type\":\"workspaces\"}}" \
-            #https://app.terraform.io/api/v2/organizations/upgrid/workspaces || true
+      - name: Create PR workspace (if not exists)
+        working-directory: terraform
+        env:
+          TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
+        run: |
+          PR_WS="pr-${{ github.event.pull_request.number }}"
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
+            -H "Content-Type: application/vnd.api+json" \
+            --data "{\"data\":{\"attributes\":{\"name\":\"$PR_WS\"},\"type\":\"workspaces\"}}" \
+            https://app.terraform.io/api/v2/organizations/upgrid/workspaces || true
       
       - name: Terraform Init + Workspace
         working-directory: terraform
