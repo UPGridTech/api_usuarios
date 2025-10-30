@@ -48,14 +48,15 @@ jobs:
           echo "IPs das VMs: $VM_IPS"
 
       - name: Rodar Ansible em cada VM
+        working-directory: playbooks
         run: |
           for IP in $VM_IPS; do
             echo "============================"
             echo "Rodando Ansible em $IP"
-            ansible-playbook playbooks/setup_vm.yml \
+            ansible-playbook setup_vm.yml \
               -i "${IP}," \
               -u "root" \
-              --extra-vars "pr_branch=${{ github.head_ref }}"
+              --extra-vars "pr_branch=${{ github.event.pull_request.number }}"
             echo "============================"
           done
 
