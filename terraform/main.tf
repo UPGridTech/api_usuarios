@@ -1,12 +1,13 @@
 terraform {
+  backend "remote" {}
+  required_version = ">= 1.0.0"
+
   required_providers {
     vsphere = {
       source  = "hashicorp/vsphere"
       version = "~> 2.12"
     }
   }
-
-  backend "remote" {}
 }
 
 
