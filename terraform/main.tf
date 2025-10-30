@@ -1,3 +1,21 @@
+terraform {
+  backend "remote" {
+    organization = "upgrid"
+    workspaces {
+      prefix = "pr-"
+    }
+  }
+
+  required_providers {
+    vsphere = {
+      source  = "hashicorp/vsphere"
+      version = "~> 2.12"
+    }
+  }
+}
+
+
+
 provider "vsphere" {
   user                 = var.vsphere_user
   password             = var.vsphere_password
@@ -57,4 +75,9 @@ resource "vsphere_virtual_machine" "virtualmachine" {
     template_uuid = data.vsphere_virtual_machine.template.id
     }
   }
+
+  output "vm_ip" {
+  description = "IP da VM criada"
+  value       = [for vm in vsphere_virtual_machine.virtualmachine : vm.default_ip_address]
+}
 
