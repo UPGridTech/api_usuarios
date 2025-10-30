@@ -34,6 +34,7 @@ jobs:
           TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
         run: |
           PR_WS="pr-${{ github.event.pull_request.number }}"
+          rm -rf .terraform
           terraform init -reconfigure -input=false
           terraform workspace select "$PR_WS"
 
