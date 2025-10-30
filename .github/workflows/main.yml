@@ -31,9 +31,9 @@ jobs:
         env:
           TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
         run: |
+          PR_WS="pr-${{ github.event.pull_request.number }}"
           terraform init -reconfigure -backend-config="organization=upgrid" -input=false
-          terraform workspace new pr-${{ github.event.pull_request.number }} || terraform workspace select pr-${{ github.event.pull_request.number }}
-
+          terraform workspace new "$PR_WS" || terraform workspace select "$PR_WS"
 
       - name: Terraform Apply (on PR open/sync)
         if: github.event.action != 'closed'
