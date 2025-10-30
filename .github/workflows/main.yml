@@ -32,13 +32,17 @@ jobs:
         if: github.event.action == 'closed'
         working-directory: terraform
         run: |
+          echo "PR_WORKSPACE=pr-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+          terraform init -input=false \
+            -backend-config="organization=upgrid" \
+            -backend-config="workspaces.name=${PR_WORKSPACE}"
           terraform destroy -var "vm_count=1" -auto-approve
           # opcional: apagar workspace via API
           PR_WS="pr-${GITHUB_EVENT_NUMBER}"
           curl --header "Authorization: Bearer $TF_API_TOKEN" \
                --header "Content-Type: application/vnd.api+json" \
                --request DELETE \
-               https://app.terraform.io/api/v2/organizations/${TF_ORG}/workspaces/${PR_WS}
+               https://app.terraform.io/api/v2/organizations/upgrid/workspaces/${PR_WS}
       - name: Obter todos os IPs das VMs
         id: vm_ips
         working-directory: terraform
