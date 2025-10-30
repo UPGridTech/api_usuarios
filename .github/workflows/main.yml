@@ -31,7 +31,7 @@ jobs:
         run: |
           terraform init -reconfigure \
             -backend-config="organization=upgrid" \
-            -backend-config="workspaces.name=${PR_WS}" \
+            -backend-config="workspaces.name=${PR_WORKSPACE}" \
             -input=false
 
       - name: Terraform Apply (on PR open/sync)
