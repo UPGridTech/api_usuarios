@@ -15,27 +15,12 @@ jobs:
 
       - name: Set PR Workspace Name
         run: echo "PR_WORKSPACE=pr-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
-      
-      - name: Create PR workspace (if not exists)
-        working-directory: terraform
-        env:
-          TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
-        run: |
-          PR_WS="pr-${{ github.event.pull_request.number }}"
-          curl -s -X POST \
-            -H "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-            -H "Content-Type: application/vnd.api+json" \
-            --data "{\"data\":{\"attributes\":{\"name\":\"$PR_WS\"},\"type\":\"workspaces\"}}" \
-            https://app.terraform.io/api/v2/organizations/upgrid/workspaces || true
-            
+    
       - name: Terraform Init + Select Workspace
         working-directory: terraform
-        env:
-          TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
         run: |
           PR_WS="pr-${{ github.event.pull_request.number }}"
-          rm -rf .terraform
-          terraform init -reconfigure -input=false
+          terraform init -reconfigure -input=false -backend-config="path=/state/${PR_WS}.tfstate"
           terraform workspace select "$PR_WS"
 
       - name: Terraform Apply (on PR open/sync)
@@ -47,17 +32,8 @@ jobs:
         if: github.event.action == 'closed'
         working-directory: terraform
         run: |
-          echo "PR_WORKSPACE=pr-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
-          terraform init -input=false \
-            -backend-config="organization=upgrid" \
-            -backend-config="workspaces.name=${PR_WORKSPACE}"
           terraform destroy -var "vm_count=1" -auto-approve
-          # opcional: apagar workspace via API
-          PR_WS="pr-${GITHUB_EVENT_NUMBER}"
-          curl --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-               --header "Content-Type: application/vnd.api+json" \
-               --request DELETE \
-               https://app.terraform.io/api/v2/organizations/upgrid/workspaces/${PR_WS}
+          
       - name: Obter todos os IPs das VMs
         id: vm_ips
         working-directory: terraform
