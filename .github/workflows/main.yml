@@ -28,14 +28,14 @@ jobs:
             --data "{\"data\":{\"attributes\":{\"name\":\"$PR_WS\"},\"type\":\"workspaces\"}}" \
             https://app.terraform.io/api/v2/organizations/upgrid/workspaces || true
             
-      - name: Terraform Init + Workspace
+      - name: Terraform Init + Select Workspace
         working-directory: terraform
         env:
           TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
         run: |
           PR_WS="pr-${{ github.event.pull_request.number }}"
           terraform init -reconfigure -input=false
-          terraform workspace new "$PR_WS" || terraform workspace select "$PR_WS"
+          terraform workspace select "$PR_WS"
 
       - name: Terraform Apply (on PR open/sync)
         if: github.event.action != 'closed'
