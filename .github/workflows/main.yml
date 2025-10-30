@@ -70,7 +70,7 @@ jobs:
               -u "${{ secrets.ANSIBLE_USER }}" \
               --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} pr_branch=${{ github.event.pull_request.number }}" \
               --ssh-common-args='-o StrictHostKeyChecking=no' \
-              -v || { echo "Ansible failed on $IP"; exit 1; }
+              -vvv
           done
 
       - name: Healthcheck
