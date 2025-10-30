@@ -1,9 +1,6 @@
 terraform {
-  backend "remote" {
-    organization = "upgrid"
-    workspaces {
-      prefix = "pr-"
-    }
+  backend "local" {
+    path = "state/default.tfstate"
   }
 
   required_providers {
@@ -13,8 +10,6 @@ terraform {
     }
   }
 }
-
-
 
 provider "vsphere" {
   user                 = var.vsphere_user
