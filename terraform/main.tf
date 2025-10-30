@@ -6,6 +6,10 @@ provider "vsphere" {
   api_timeout          = 300
 }
 
+terraform {
+  backend "remote" {}
+}
+
 data "vsphere_datacenter" "datacenter" {
   name = var.vsphere_datacenter
 }
@@ -57,4 +61,9 @@ resource "vsphere_virtual_machine" "virtualmachine" {
     template_uuid = data.vsphere_virtual_machine.template.id
     }
   }
+
+  output "vm_ip" {
+  description = "IP da VM criada"
+  value       = [for vm in vsphere_virtual_machine.virtualmachine : vm.default_ip_address]
+}
 
