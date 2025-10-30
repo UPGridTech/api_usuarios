@@ -1,6 +1,10 @@
 terraform {
-  backend "remote" {}
-  required_version = ">= 1.0.0"
+  backend "remote" {
+    organization = "upgrid"
+    workspaces {
+      prefix = "pr-"
+    }
+  }
 
   required_providers {
     vsphere = {
@@ -9,6 +13,7 @@ terraform {
     }
   }
 }
+
 
 
 provider "vsphere" {
