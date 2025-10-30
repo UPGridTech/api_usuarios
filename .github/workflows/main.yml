@@ -28,6 +28,8 @@ jobs:
       
       - name: Terraform Init + Workspace
         working-directory: terraform
+        env:
+          TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
         run: |
           terraform init -reconfigure -backend-config="organization=upgrid" -input=false
           terraform workspace new pr-${{ github.event.pull_request.number }} || terraform workspace select pr-${{ github.event.pull_request.number }}
