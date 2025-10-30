@@ -15,6 +15,16 @@ jobs:
 
       - name: Set PR Workspace Name
         run: echo "PR_WORKSPACE=pr-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+
+      - name: Setup Workspace Terraform Cloud
+        run: |
+          echo "Using workspace: $PR_WORKSPACE"
+          curl \
+            --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
+            --header "Content-Type: application/vnd.api+json" \
+            --request POST \
+            --data "{\"data\":{\"attributes\":{\"name\":\"${PR_WORKSPACE}\"},\"type\":\"workspaces\"}}" \
+            https://app.terraform.io/api/v2/organizations/upgrid/workspaces || true
       
       - name: Terraform Init
         working-directory: terraform
@@ -39,7 +49,7 @@ jobs:
           terraform destroy -var "vm_count=1" -auto-approve
           # opcional: apagar workspace via API
           PR_WS="pr-${GITHUB_EVENT_NUMBER}"
-          curl --header "Authorization: Bearer $TF_API_TOKEN" \
+          curl --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
                --header "Content-Type: application/vnd.api+json" \
                --request DELETE \
                https://app.terraform.io/api/v2/organizations/upgrid/workspaces/${PR_WS}
