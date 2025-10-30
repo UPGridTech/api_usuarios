@@ -29,9 +29,10 @@ jobs:
       - name: Terraform Init
         working-directory: terraform
         run: |
-          terraform init -input=false \
+          terraform init -reconfigure \
             -backend-config="organization=upgrid" \
-            -backend-config="workspaces.name=${PR_WORKSPACE}"
+            -backend-config="workspaces.name=${PR_WS}" \
+            -input=false
 
       - name: Terraform Apply (on PR open/sync)
         if: github.event.action != 'closed'
