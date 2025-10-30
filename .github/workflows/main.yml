@@ -16,23 +16,22 @@ jobs:
       - name: Set PR Workspace Name
         run: echo "PR_WORKSPACE=pr-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
 
-      - name: Setup Workspace Terraform Cloud
-        run: |
-          echo "Using workspace: $PR_WORKSPACE"
-          curl \
-            --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-            --header "Content-Type: application/vnd.api+json" \
-            --request POST \
-            --data "{\"data\":{\"attributes\":{\"name\":\"${PR_WORKSPACE}\"},\"type\":\"workspaces\"}}" \
-            https://app.terraform.io/api/v2/organizations/upgrid/workspaces || true
+      #- name: Setup Workspace Terraform Cloud
+       # run: |
+        #  echo "Using workspace: $PR_WORKSPACE"
+         # curl \
+          #  --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
+           # --header "Content-Type: application/vnd.api+json" \
+            #--request POST \
+            #--data "{\"data\":{\"attributes\":{\"name\":\"${PR_WORKSPACE}\"},\"type\":\"workspaces\"}}" \
+            #https://app.terraform.io/api/v2/organizations/upgrid/workspaces || true
       
-      - name: Terraform Init
+      - name: Terraform Init + Workspace
         working-directory: terraform
         run: |
-          terraform init -reconfigure \
-            -backend-config="organization=upgrid" \
-            -backend-config="workspaces.name=${PR_WORKSPACE}" \
-            -input=false
+          terraform init -reconfigure -backend-config="organization=upgrid" -input=false
+          terraform workspace new pr-${{ github.event.pull_request.number }} || terraform workspace select pr-${{ github.event.pull_request.number }}
+
 
       - name: Terraform Apply (on PR open/sync)
         if: github.event.action != 'closed'
