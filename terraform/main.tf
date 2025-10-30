@@ -1,13 +1,21 @@
+terraform {
+  required_providers {
+    vsphere = {
+      source  = "hashicorp/vsphere"
+      version = "~> 2.12"
+    }
+  }
+
+  backend "remote" {}
+}
+
+
 provider "vsphere" {
   user                 = var.vsphere_user
   password             = var.vsphere_password
   vsphere_server       = var.vsphere_server
   allow_unverified_ssl = true
   api_timeout          = 300
-}
-
-terraform {
-  backend "remote" {}
 }
 
 data "vsphere_datacenter" "datacenter" {
