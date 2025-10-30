@@ -6,6 +6,10 @@ provider "vsphere" {
   api_timeout          = 300
 }
 
+terraform {
+  backend "remote" {}
+}
+
 data "vsphere_datacenter" "datacenter" {
   name = var.vsphere_datacenter
 }
