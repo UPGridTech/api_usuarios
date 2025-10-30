@@ -51,17 +51,16 @@ jobs:
           echo "VM_IPS=$VM_IPS" >> $GITHUB_ENV
           echo "IPs das VMs: $VM_IPS"
 
-      - name: Rodar Ansible em cada VM
-        working-directory: playbooks
+      - name: Run Ansible on each VM
         run: |
           for IP in $VM_IPS; do
-            echo "============================"
-            echo "Rodando Ansible em $IP"
-            ansible-playbook vm_setup.yml \
+            echo "=== Running Ansible on $IP ==="
+            ansible-playbook playbooks/vm_setup.yml \
               -i "${IP}," \
-              -u "root" \
-              --extra-vars "pr_branch=${{ github.event.pull_request.number }}"
-            echo "============================"
+              -u "${{ secrets.ANSIBLE_USER }}" \
+              --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} pr_branch=${{ github.event.pull_request.number }}" \
+              --ssh-common-args='-o StrictHostKeyChecking=no' \
+              -v || { echo "Ansible failed on $IP"; exit 1; }
           done
 
       - name: Healthcheck
