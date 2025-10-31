@@ -1,5 +1,11 @@
 terraform {
-  backend "local" {}
+  backend "s3" {
+    bucket         = "meu-terraform-state-bucket"    # troque pelo output bucket_name
+    key            = "envs/pr-${var.pr_number}/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "meu-terraform-state-bucket-lock" # troque pelo output dynamodb_table
+    encrypt        = true
+  }
 
   required_providers {
     vsphere = {

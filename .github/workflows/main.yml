@@ -19,14 +19,12 @@ jobs:
       - name: Terraform Init + Select Workspace
         working-directory: terraform
         run: |
-          PR_WS="pr-${{ github.event.pull_request.number }}"
-          mkdir -p /home/felipe/state
-          id -u
-          id -g
-          chown $(id -u):$(id -g) /home/felipe/state
-          terraform init -reconfigure -input=false -backend-config="path=/home/felipe/state/${PR_WS}.tfstate"
-          terraform workspace select -or-create "$PR_WS"
-
+          terraform init -reconfigure -input=false \
+            -backend-config="bkt-state-upgrid-tech" \
+            -backend-config="key=pr-${{ github.event.pull_request.number }}/terraform.tfstate" \
+            -backend-config="region=us-east-1" \
+            -backend-config="bkt-state-upgrid-tech-lock" \
+            -backend-config="encrypt=true"
       - name: Terraform Apply (on PR open/sync)
         if: github.event.action != 'closed'
         working-directory: terraform
