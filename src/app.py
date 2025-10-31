@@ -6,7 +6,7 @@ app = Flask(__name__)
 usuarios = [
     {"id": 1, "nome": "Jhennifer", "email": "jhennifer222@email.com"},
     {"id": 2, "nome": "Samuel", "email": "samuel2222@email.com"}
-    {"id": 3, "nome": "Felipe", "email": "felipeee2222e@email.com"}
+    {"id": 3, "nome": "Felipe", "email": "felipeee22222e@email.com"}
 ]
 
 # Rota raiz
