@@ -21,12 +21,9 @@ jobs:
         run: |
           PR_WS="pr-${{ github.event.pull_request.number }}"
           mkdir -p /home/felipe/state
-          id -u
-          id -g
           chown $(id -u):$(id -g) /home/felipe/state
           terraform init -reconfigure -input=false -backend-config="path=/home/felipe/state/${PR_WS}.tfstate"
           terraform workspace select -or-create "$PR_WS"
-          ls -la state
 
       - name: Terraform Apply (on PR open/sync)
         if: github.event.action != 'closed'
