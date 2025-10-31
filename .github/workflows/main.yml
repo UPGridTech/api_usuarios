@@ -20,10 +20,10 @@ jobs:
         working-directory: terraform
         run: |
           terraform init -reconfigure -input=false \
-            -backend-config="bkt-state-upgrid-tech" \
+            -backend-config="bucket=bkt-state-upgrid-tech" \
             -backend-config="key=pr-${{ github.event.pull_request.number }}/terraform.tfstate" \
             -backend-config="region=us-east-1" \
-            -backend-config="bkt-state-upgrid-tech-lock" \
+            -backend-config="dynamodb_table=bkt-state-upgrid-tech-lock" \
             -backend-config="encrypt=true"
       - name: Terraform Apply (on PR open/sync)
         if: github.event.action != 'closed'
