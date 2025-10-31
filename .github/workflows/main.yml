@@ -4,7 +4,7 @@ on:
   pull_request:
     branches:
       - dev
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, closed]
 
 jobs:
   build-and-run:
@@ -12,31 +12,52 @@ jobs:
     steps:
       - name: Checkout código da PR
         uses: actions/checkout@v4
-      - name: Deploy VM Terraform
+
+      - name: Set PR Workspace Name
+        run: echo "PR_WORKSPACE=pr-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+    
+      - name: Terraform Init + Select Workspace
         working-directory: terraform
         run: |
-          terraform init
-      - name: apply terraform
+          PR_WS="pr-${{ github.event.pull_request.number }}"
+          mkdir -p /home/felipe/state
+          id -u
+          id -g
+          chown $(id -u):$(id -g) /home/felipe/state
+          terraform init -reconfigure -input=false -backend-config="path=/home/felipe/state/${PR_WS}.tfstate"
+          terraform workspace select -or-create "$PR_WS"
+
+      - name: Terraform Apply (on PR open/sync)
+        if: github.event.action != 'closed'
+        working-directory: terraform
         run: |
-          terrafom apply -v "vm_count=1" --auto-aprove
+          terraform apply -var "vm_count=1" -auto-approve
+          terraform state pull > /home/felipe/state/${PR_WS}.tfstate
+
+      - name: Terraform Destroy (on PR closed)
+        if: github.event.action == 'closed'
+        working-directory: terraform
+        run: |
+          terraform destroy -var "vm_count=1" -auto-approve
+          
       - name: Obter todos os IPs das VMs
         id: vm_ips
         working-directory: terraform
         run: |
-          VM_IPS=$(terraform output -json vm_ips | jq -r '.[]')
+          VM_IPS=$(terraform output -json vm_ip | jq -r '.[]')
           echo "VM_IPS=$VM_IPS" >> $GITHUB_ENV
           echo "IPs das VMs: $VM_IPS"
 
-      - name: Rodar Ansible em cada VM
+      - name: Run Ansible on each VM
         run: |
           for IP in $VM_IPS; do
-            echo "============================"
-            echo "Rodando Ansible em $IP"
-            ansible-playbook playbooks/setup_vm.yml \
+            echo "=== Running Ansible on $IP ==="
+            ansible-playbook playbooks/vm_setup.yml \
               -i "${IP}," \
-              -u "admin" \
-              --extra-vars "pr_branch=${{ github.head_ref }}"
-            echo "============================"
+              -u "${{ secrets.ANSIBLE_USER }}" \
+              --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} pr_branch=${{ github.event.pull_request.number }}" \
+              --ssh-common-args='-o StrictHostKeyChecking=no' \
+              -vvv
           done
 
       - name: Healthcheck
