@@ -1,7 +1,5 @@
 terraform {
-  backend "local" {
-    path = "state/default.tfstate"
-  }
+  backend "local" {}
 
   required_providers {
     vsphere = {
