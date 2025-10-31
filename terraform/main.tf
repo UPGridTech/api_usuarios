@@ -1,3 +1,20 @@
+terraform {
+  backend "s3" {
+    bucket         = "meu-terraform-state-bucket"    # troque pelo output bucket_name
+    key            = "envs/pr-${var.pr_number}/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "meu-terraform-state-bucket-lock" # troque pelo output dynamodb_table
+    encrypt        = true
+  }
+
+  required_providers {
+    vsphere = {
+      source  = "hashicorp/vsphere"
+      version = "~> 2.12"
+    }
+  }
+}
+
 provider "vsphere" {
   user                 = var.vsphere_user
   password             = var.vsphere_password
@@ -57,4 +74,9 @@ resource "vsphere_virtual_machine" "virtualmachine" {
     template_uuid = data.vsphere_virtual_machine.template.id
     }
   }
+
+  output "vm_ip" {
+  description = "IP da VM criada"
+  value       = [for vm in vsphere_virtual_machine.virtualmachine : vm.default_ip_address]
+}
 
