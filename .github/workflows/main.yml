@@ -20,8 +20,8 @@ jobs:
         working-directory: terraform
         run: |
           PR_WS="pr-${{ github.event.pull_request.number }}"
-          mkdir -p /state/felipe
-          terraform init -reconfigure -input=false -backend-config="path=/state/felipe/${PR_WS}.tfstate"
+          mkdir -p /home/felipe/state
+          terraform init -reconfigure -input=false -backend-config="path=/home/felipe/state/${PR_WS}.tfstate"
           terraform workspace select -or-create "$PR_WS"
           ls -la state
 
