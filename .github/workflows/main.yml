@@ -4,7 +4,7 @@ on:
   pull_request:
     branches:
       - dev
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, closed]
 
 jobs:
   build-and-run:
@@ -12,31 +12,51 @@ jobs:
     steps:
       - name: Checkout código da PR
         uses: actions/checkout@v4
-      - name: Deploy VM Terraform
-        working-directory: terraform
-        run: |
-          terraform init
-          terraform apply -v "vm_count=1" --auto-aprove
-      - name: Get VM IP
-        id: vm
-        working-directory: terraform
-        run: |
-          VM_IP=$(terraform output -raw vm_ip 2>/dev/null || true)
-          if [ -z "$VM_IP" ]; then
-            echo "ERROR: terraform output 'vm_ip' is empty. Dumping outputs for debug:"
-            terraform output
-            exit 1
-          fi
-          echo "VM_IP=${VM_IP}" >> $GITHUB_ENV
 
-      - name: Run Ansible Playbook
+      - name: Set PR Workspace Name
+        run: echo "PR_WORKSPACE=pr-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+    
+      - name: Terraform Init + Select Workspace
+        working-directory: terraform
         run: |
-          IP="${{ env.VM_IP }}"
-          ansible-playbook playbooks/vm_setup.yml \
-            -i "${IP}," \
-            -u "root" \
-            --ask-pass \
-            --extra-vars "pr_branch=${{ github.head_ref }}" -v
+          terraform init -reconfigure -input=false \
+            -backend-config="bucket=bkt-state-upgrid-tech" \
+            -backend-config="key=pr-${{ github.event.pull_request.number }}/terraform.tfstate" \
+            -backend-config="region=us-east-1" \
+            -backend-config="dynamodb_table=bkt-state-upgrid-tech-lock" \
+            -backend-config="encrypt=true"
+      - name: Terraform Apply (on PR open/sync)
+        if: github.event.action != 'closed'
+        working-directory: terraform
+        run: |
+          terraform apply -var "vm_count=1" -auto-approve
+          terraform state pull > /home/felipe/state/${PR_WS}.tfstate
+
+      - name: Terraform Destroy (on PR closed)
+        if: github.event.action == 'closed'
+        working-directory: terraform
+        run: |
+          terraform destroy -var "vm_count=1" -auto-approve
+          
+      - name: Obter todos os IPs das VMs
+        id: vm_ips
+        working-directory: terraform
+        run: |
+          VM_IPS=$(terraform output -json vm_ip | jq -r '.[]')
+          echo "VM_IPS=$VM_IPS" >> $GITHUB_ENV
+          echo "IPs das VMs: $VM_IPS"
+
+      - name: Run Ansible on each VM
+        run: |
+          for IP in $VM_IPS; do
+            echo "=== Running Ansible on $IP ==="
+            ansible-playbook playbooks/vm_setup.yml \
+              -i "${IP}," \
+              -u "${{ secrets.ANSIBLE_USER }}" \
+              --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} pr_branch=${{ github.event.pull_request.number }}" \
+              --ssh-common-args='-o StrictHostKeyChecking=no' \
+              -vvv
+          done
 
       - name: Healthcheck
         run: |
