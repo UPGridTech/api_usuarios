@@ -32,7 +32,7 @@ jobs:
         working-directory: terraform
         run: |
           terraform apply -var "vm_count=1" -auto-approve
-          terraform state pull > /home/felipe/state/${PR_WS}.tfstate || true
+          terraform state pull > /home/felipe/state/${PR_WS}.tfstate
 
       - name: Terraform Destroy (on PR closed)
         if: github.event.action == 'closed'
