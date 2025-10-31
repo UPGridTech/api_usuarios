@@ -20,6 +20,7 @@ jobs:
         working-directory: terraform
         run: |
           PR_WS="pr-${{ github.event.pull_request.number }}"
+          ls -la /state || echo "/state não existe ou sem permissões"
           terraform init -reconfigure -input=false -backend-config="path=/state/${PR_WS}.tfstate"
           terraform workspace select -or-create "$PR_WS"
 
