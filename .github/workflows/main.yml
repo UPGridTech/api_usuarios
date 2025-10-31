@@ -23,7 +23,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_TOKEN_KEY }}
           aws-region: us-east-1
-    
+
       - name: Terraform Init + Select Workspace
         working-directory: terraform
         run: |
@@ -61,7 +61,7 @@ jobs:
             ansible-playbook playbooks/vm_setup.yml \
               -i "${IP}," \
               -u "${{ secrets.ANSIBLE_USER }}" \
-              --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} pr_branch=${{ github.event.pull_request.number }}" \
+              --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} pr_branch=${{ github.event.pull_request.number }} github_token=${{ secrets.GITHUB_PAT }} postgres_user=${{ secrets.POSTGRES_USER }} postgres_password=${{ secrets.POSTGRES_PASSWORD }} postgres_db=${{ secrets.POSTGRES_DB }}" \
               --ssh-common-args='-o StrictHostKeyChecking=no' \
               -vvv
           done
