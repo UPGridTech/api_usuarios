@@ -26,12 +26,13 @@ jobs:
           chown $(id -u):$(id -g) /home/felipe/state
           terraform init -reconfigure -input=false -backend-config="path=/home/felipe/state/${PR_WS}.tfstate"
           terraform workspace select -or-create "$PR_WS"
-          ls -la state
 
       - name: Terraform Apply (on PR open/sync)
         if: github.event.action != 'closed'
         working-directory: terraform
-        run: terraform apply -var "vm_count=1" -auto-approve
+        run: |
+          terraform apply -var "vm_count=1" -auto-approve
+          terraform state pull > /home/felipe/state/${PR_WS}.tfstate || true
 
       - name: Terraform Destroy (on PR closed)
         if: github.event.action == 'closed'
