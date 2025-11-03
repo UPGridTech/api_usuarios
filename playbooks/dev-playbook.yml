@@ -58,10 +58,12 @@
 
     - name: Clonar PR privado automaticamente
       git:
-        repo: "https://{{ github_token }}@github.com/UPGridTech/api_usuarios/"
+        repo: "https://{{ github_token }}@github.com/UPGridTech/api_usuarios.git"
         dest: "{{ app_path }}"
-        version: "refs/pull/{{ pr_number }}/head"
+        version: "{{ pr_branch | default('main') }}"
+        update: yes
         force: yes
+        
     - name: Criar .env na VM
       copy:
         dest: "{{ app_path }}/docker/.env"
