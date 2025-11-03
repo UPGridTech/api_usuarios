@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Supermercado CRUD</title>
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Supermercadoo CRUD</h1>
+  </header>
+
+  <main>
+    <section id="form-section">
+      <h2 id="form-title">Adicionar Produto</h2>
+      <form id="produto-form">
+        <input type="hidden" id="produto-id" value="">
+        <label>Nome</label>
+        <input type="text" id="nome" required>
+        <label>Preço (R$)</label>
+        <input type="number" id="preco" step="0.01" required>
+        <label>Estoque</label>
+        <input type="number" id="estoque" required>
+        <label>Categorias</label>
+        <input type="text" id="categoria" required>
+        <button type="submit">Salvar</button>
+        <button type="button" id="cancel-btn" class="hidden">Cancelar</button>
+      </form>
+    </section>
+
+    <section id="produtos-section">
+      <h2>Lista de Produtos</h2>
+      <div id="produtos-list"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+const API = '';
+
+async function fetchProdutos() {
+  const res = await fetch(API + '/produtos');
+  return res.json();
+}
+
+async function createProduto(produto) {
+  return fetch(API + '/produtos', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(produto)
+  }).then(r=>r.json());
+}
+
+function renderProdutos(produtos) {
+  const container = document.getElementById('produtos-list');
+  container.innerHTML = '';
+  produtos.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.innerHTML = `
+      <h3>${p.nome}</h3>
+      <p>Preço: R$ ${p.preco.toFixed(2)}</p>
+      <p>Estoque: ${p.estoque}</p>
+      <p>Categoria: ${p.categoria || '-'}</p>
+      <div class="actions">
+        <button class="edit-btn">✏️ Editar</button>
+        <button class="delete-btn">🗑️ Deletar</button>
+      </div>
+    `;
+    const editBtn = div.querySelector('.edit-btn');
+    editBtn.onclick = () => fillForm(p);
+    const delBtn = div.querySelector('.delete-btn');
+    delBtn.onclick = () => deleteProduto(p.id);
+    container.appendChild(div);
+  });
+}
+
+function fillForm(produto) {
+  document.getElementById('produto-id').value = produto.id;
+  document.getElementById('nome').value = produto.nome;
+  document.getElementById('preco').value = produto.preco;
+  document.getElementById('estoque').value = produto.estoque;
+  document.getElementById('categoria').value = produto.categoria;
+  document.getElementById('form-title').innerText = 'Editar Produto';
+  document.getElementById('cancel-btn').classList.remove('hidden');
+}
+
+document.getElementById('cancel-btn').onclick = () => {
+  document.getElementById('produto-form').reset();
+  document.getElementById('produto-id').value = '';
+  document.getElementById('form-title').innerText = 'Adicionar Produto';
+  document.getElementById('cancel-btn').classList.add('hidden');
+};
+
+async function deleteProduto(id) {
+  if(!confirm('Deseja realmente deletar este produto?')) return;
+  await fetch(`${API}/produtos/${id}`, {method:'DELETE'});
+  load();
+}
+
+document.getElementById('produto-form').onsubmit = async e => {
+  e.preventDefault();
+  const id = document.getElementById('produto-id').value;
+  const produto = {
+    nome: document.getElementById('nome').value,
+    preco: parseFloat(document.getElementById('preco').value),
+    estoque: parseInt(document.getElementById('estoque').value),
+    categoria_id: 1  // ajuste se quiser categorias reais
+  };
+  if(id){
+    await fetch(`${API}/produtos/${id}`,{
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(produto)
+    });
+  } else {
+    await createProduto(produto);
+  }
+  document.getElementById('produto-form').reset();
+  document.getElementById('produto-id').value='';
+  document.getElementById('form-title').innerText = 'Adicionar Produto';
+  document.getElementById('cancel-btn').classList.add('hidden');
+  load();
+};
+
+async function load() {
+  const produtos = await fetchProdutos();
+  renderProdutos(produtos);
+}
+
+window.onload = load;
+</script>
+</body>
+</html>
