@@ -80,6 +80,6 @@ def ui_index():
 
 if __name__ == "__main__":
     if not wait_for_db():
-        raise SystemExit("DB não ficou pronto")
+        raise SystemExit("DBB não ficou pronto")
     Base.metadata.create_all(bind=engine)
     app.run(host="0.0.0.0", port=PORT)
