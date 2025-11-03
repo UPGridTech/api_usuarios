@@ -1,58 +1,85 @@
-from flask import Flask, jsonify, request
+import os
+import time
+from flask import Flask, jsonify, request, send_from_directory
+from sqlalchemy import create_engine, Column, Integer, String, Numeric, ForeignKey
+from sqlalchemy.orm import declarative_base, sessionmaker, scoped_session, relationship
 
-app = Flask(__name__)
+PORT = int(os.getenv("PORT", 5000))
+DATABASE_URL = os.getenv("DATABASE_URL") or "postgresql://meuuser:supersegredo@db:5432/minhadb"
 
-# Simulação de um banco de dados (lista)
-usuarios = [
-    {"id": 1, "nome": "Jhennifer", "email": "jhennifer@email.com"},
-    {"id": 2, "nome": "Samuel", "email": "samuel@2email.com"}
-    {"id": 3, "nome": "Felipe", "email": "felipeeee@email.com"}
-]
+app = Flask(__name__, static_folder="static", static_url_path="/static")
 
-# Rota raiz
-@app.route("/")
-def home():
-    return jsonify({"mensagem": "API de Usuários está rodando 🚀"})
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+SessionLocal = scoped_session(sessionmaker(bind=engine))
+Base = declarative_base()
 
-# Listar todos os usuários
-@app.route("/usuarios", methods=["GET"])
-def listar_usuarios():
-    return jsonify(usuarios)
+# Modelos
+class Categoria(Base):
+    __tablename__ = "categorias"
+    id = Column(Integer, primary_key=True)
+    nome = Column(String(100), unique=True, nullable=False)
+    produtos = relationship("Produto", back_populates="categoria")
 
-# Obter usuário por ID
-@app.route("/usuarios/<int:id>", methods=["GET"])
-def obter_usuario(id):
-    usuario = next((u for u in usuarios if u["id"] == id), None)
-    if usuario:
-        return jsonify(usuario)
-    return jsonify({"erro": "Usuário não encontrado"}), 404
+class Produto(Base):
+    __tablename__ = "produtos"
+    id = Column(Integer, primary_key=True)
+    nome = Column(String(150), nullable=False)
+    preco = Column(Numeric(10,2), nullable=False)
+    categoria_id = Column(Integer, ForeignKey("categorias.id"))
+    estoque = Column(Integer, default=0)
+    categoria = relationship("Categoria", back_populates="produtos")
 
-# Criar novo usuário
-@app.route("/usuarios", methods=["POST"])
-def criar_usuario():
-    novo = request.json
-    novo["id"] = len(usuarios) + 1
-    usuarios.append(novo)
-    return jsonify(novo), 201
+def wait_for_db(retries=20):
+    for i in range(retries):
+        try:
+            with engine.connect() as conn:
+                conn.execute("SELECT 1")
+            return True
+        except:
+            print("DB não pronto, tentando novamente...")
+            time.sleep(2)
+    return False
 
-# Atualizar usuário existente
-@app.route("/usuarios/<int:id>", methods=["PUT"])
-def atualizar_usuario(id):
-    usuario = next((u for u in usuarios if u["id"] == id), None)
-    if not usuario:
-        return jsonify({"erro": "Usuário não encontrado"}), 404
+# API Produtos
+@app.route("/produtos", methods=["GET"])
+def get_produtos():
+    session = SessionLocal()
+    try:
+        produtos = session.query(Produto).all()
+        return jsonify([{
+            "id": p.id,
+            "nome": p.nome,
+            "preco": float(p.preco),
+            "estoque": p.estoque,
+            "categoria": p.categoria.nome if p.categoria else None
+        } for p in produtos])
+    finally:
+        session.close()
 
-    dados = request.json
-    usuario.update(dados)
-    return jsonify(usuario)
+@app.route("/produtos", methods=["POST"])
+def create_produto():
+    data = request.json
+    session = SessionLocal()
+    try:
+        p = Produto(
+            nome=data["nome"],
+            preco=data["preco"],
+            estoque=data.get("estoque",0),
+            categoria_id=data.get("categoria_id")
+        )
+        session.add(p)
+        session.commit()
+        return jsonify({"id": p.id}), 201
+    finally:
+        session.close()
 
-# Deletar usuário
-@app.route("/usuarios/<int:id>", methods=["DELETE"])
-def deletar_usuario(id):
-    global usuarios
-    usuarios = [u for u in usuarios if u["id"] != id]
-    return jsonify({"mensagem": f"Usuário {id} removido com sucesso!"})
+# Serve Frontend
+@app.route("/ui")
+def ui_index():
+    return send_from_directory(app.static_folder, "index.html")
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
-
+    if not wait_for_db():
+        raise SystemExit("DBB não ficou pronto")
+    Base.metadata.create_all(bind=engine)
+    app.run(host="0.0.0.0", port=PORT)
