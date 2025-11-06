@@ -75,4 +75,4 @@
     - name: Docker compose Deploy app
       command: docker compose up -d --build
       args:
-        chdir: "{{ app_path }}/docker"
+        chdir: "{{ app_path }}"
