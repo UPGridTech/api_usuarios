@@ -5,7 +5,7 @@ from sqlalchemy import create_engine, Column, Integer, String, Numeric, ForeignK
 from sqlalchemy.orm import declarative_base, sessionmaker, scoped_session, relationship
 
 PORT = int(os.getenv("PORT", 5000))
-DATABASE_URL = os.getenv("DATABASE_URL") or "postgresql://meuuser:supersegredo@db:5432/minhadb"
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 
