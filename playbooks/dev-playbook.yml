@@ -66,7 +66,7 @@
         
     - name: Criar .env na VM
       copy:
-        dest: "{{ app_path }}/docker/.env"
+        dest: "{{ app_path }}/.env"
         content: |
           POSTGRES_USER={{ postgres_user }}
           POSTGRES_PASSWORD={{ postgres_password }}
