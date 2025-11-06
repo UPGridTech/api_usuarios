@@ -1,9 +1,9 @@
 terraform {
   backend "s3" {
-    bucket         = "bkt-senai-upgrid"    # troque pelo output bucket_name
+    bucket         = "bkt-senai-02"    # troque pelo output bucket_name
     key            = "envs/pr-${var.pr_number}/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "bkt-senai-upgrid-lock"
+    dynamodb_table = "bkt-senai-02-lock"
     encrypt        = true
   }
 
