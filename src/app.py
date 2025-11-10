@@ -1,30 +1,49 @@
 import os
 import time
-from flask import Flask, jsonify, request, send_from_directory, abort
+import logging
+import json
+from flask import Flask, jsonify, request, send_from_directory
 from sqlalchemy import create_engine, Column, Integer, String, Numeric, ForeignKey, text
 from sqlalchemy.orm import declarative_base, sessionmaker, scoped_session, relationship
 
-# Config
+# OpenTelemetry imports
+from opentelemetry import trace
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+from opentelemetry.instrumentation.prometheus import PrometheusMetricsInstrumentor
+
 PORT = int(os.getenv("PORT", 5000))
 DATABASE_URL = os.getenv("DATABASE_URL") or "postgresql://meuuser:supersegredo@db:5432/minhadb"
+SIGNOZ_OTLP_URL = os.getenv("SIGNOZ_OTLP_URL")
+SIGNOZ_INGEST_KEY = os.getenv("SIGNOZ_INGEST_KEY")
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 
-# Banco
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = scoped_session(sessionmaker(bind=engine))
 Base = declarative_base()
 
 
-# ===============================
-# MODELOS
-# ===============================
+logger = logging.getLogger("supermercado")
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+formatter = logging.Formatter(json.dumps({
+    "time": "%(asctime)s",
+    "level": "%(levelname)s",
+    "message": "%(message)s"
+}))
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
 class Categoria(Base):
     __tablename__ = "categorias"
     id = Column(Integer, primary_key=True)
     nome = Column(String(100), unique=True, nullable=False)
     produtos = relationship("Produto", back_populates="categoria")
-
 
 class Produto(Base):
     __tablename__ = "produtos"
@@ -35,10 +54,6 @@ class Produto(Base):
     estoque = Column(Integer, default=0)
     categoria = relationship("Categoria", back_populates="produtos")
 
-
-# ===============================
-# HELPERS
-# ===============================
 def produto_to_dict(p: Produto):
     return {
         "id": p.id,
@@ -48,24 +63,37 @@ def produto_to_dict(p: Produto):
         "categoria": p.categoria.nome if p.categoria else None,
     }
 
-
 def wait_for_db(retries=20):
-    """Tenta conectar no banco até estar pronto."""
     for i in range(retries):
         try:
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
-            print("✅ Banco disponível")
+            logger.info("Banco disponível")
             return True
         except Exception:
-            print("⏳ DB não pronto, tentando novamente...")
+            logger.info("DB não pronto, tentando novamente...")
             time.sleep(2)
     return False
 
 
-# ===============================
-# ROTAS API
-# ===============================
+trace.set_tracer_provider(
+    TracerProvider(resource=Resource.create({SERVICE_NAME: "supermercado-app"}))
+)
+tracer = trace.get_tracer(__name__)
+
+otlp_exporter = OTLPSpanExporter(
+    endpoint=SIGNOZ_OTLP_URL,
+    insecure=False,  # SigNoz Cloud usa TLS
+    headers=(("x-signoz-ingest-key", SIGNOZ_INGEST_KEY),)
+)
+span_processor = BatchSpanProcessor(otlp_exporter)
+trace.get_tracer_provider().add_span_processor(span_processor)
+
+FlaskInstrumentor().instrument_app(app)
+SQLAlchemyInstrumentor().instrument(engine=engine)
+
+PrometheusMetricsInstrumentor().instrument(app)
+
 @app.route("/produtos", methods=["GET"])
 def get_produtos():
     session = SessionLocal()
@@ -75,7 +103,6 @@ def get_produtos():
     finally:
         session.close()
 
-
 @app.route("/produtos", methods=["POST"])
 def create_produto():
     data = request.get_json(force=True)
@@ -84,65 +111,58 @@ def create_produto():
         p = Produto(
             nome=data["nome"],
             preco=data["preco"],
-            estoque=data.get("estoque", 0),
-            categoria_id=data.get("categoria_id"),
+            estoque=data.get("estoque",0),
+            categoria_id=data.get("categoria_id")
         )
         session.add(p)
         session.commit()
+        logger.info(f"Produto criado: {p.nome}")
         return jsonify(produto_to_dict(p)), 201
     except Exception as e:
         session.rollback()
-        print("Erro ao criar produto:", e)
-        return jsonify({"error": "erro ao criar produto"}), 500
+        logger.error(f"Erro criar produto: {str(e)}")
+        return jsonify({"error":"erro ao criar"}), 500
     finally:
         session.close()
-
 
 @app.route("/produtos/<int:produto_id>", methods=["PUT"])
 def update_produto(produto_id):
     data = request.get_json(force=True, silent=True)
-    if not data:
-        return jsonify({"error": "json inválido"}), 400
-
     session = SessionLocal()
     try:
         p = session.get(Produto, produto_id)
-        if not p:
-            return jsonify({"error": "não encontrado"}), 404
-
+        if not p: return jsonify({"error":"não encontrado"}), 404
         p.nome = data.get("nome", p.nome)
         p.preco = data.get("preco", p.preco)
         p.estoque = data.get("estoque", p.estoque)
         p.categoria_id = data.get("categoria_id", p.categoria_id)
-
         session.commit()
         session.refresh(p)
+        logger.info(f"Produto atualizado: {p.nome}")
         return jsonify(produto_to_dict(p))
     except Exception as e:
         session.rollback()
-        print("Erro ao atualizar produto:", e)
-        return jsonify({"error": "erro ao atualizar"}), 500
+        logger.error(f"Erro atualizar produto: {str(e)}")
+        return jsonify({"error":"erro ao atualizar"}), 500
     finally:
         session.close()
-
 
 @app.route("/produtos/<int:produto_id>", methods=["DELETE"])
 def delete_produto(produto_id):
     session = SessionLocal()
     try:
         p = session.get(Produto, produto_id)
-        if not p:
-            return jsonify({"error": "não encontrado"}), 404
+        if not p: return jsonify({"error":"não encontrado"}), 404
         session.delete(p)
         session.commit()
+        logger.info(f"Produto deletado: {p.nome}")
         return jsonify({"ok": True})
     except Exception as e:
         session.rollback()
-        print("Erro ao deletar produto:", e)
-        return jsonify({"error": "erro ao deletar"}), 500
+        logger.error(f"Erro deletar produto: {str(e)}")
+        return jsonify({"error":"erro ao deletar"}), 500
     finally:
         session.close()
-
 
 # ===============================
 # FRONTEND
@@ -155,13 +175,9 @@ def serve_frontend(path):
         return send_from_directory(app.static_folder, path)
     return send_from_directory(app.static_folder, "index.html")
 
-
-# ===============================
-# MAIN
-# ===============================
 if __name__ == "__main__":
     if not wait_for_db():
-        raise SystemExit("❌ Banco não ficou pronto a tempo.")
+        raise SystemExit("Banco não pronto")
     Base.metadata.create_all(bind=engine)
-    print(f"🚀 Servidor rodando em http://0.0.0.0:{PORT}")
+    logger.info(f"Servidor rodando na porta {PORT}")
     app.run(host="0.0.0.0", port=PORT)
