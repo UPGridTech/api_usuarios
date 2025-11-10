@@ -73,7 +73,7 @@
           POSTGRES_DB={{ postgres_db }}
           DATABASE_URL=postgresql://{{ postgres_user }}:{{ postgres_password }}@db:5432/{{ postgres_db }}
           SIGNOZ_OTLP_URL=https://ingest.signoz.cloud:4317
-          SIGNOZ_INGEST_KEY=b4e4cb2f-5337-4c86-a952-793acc1370a3
+          SIGNOZ_INGEST_KEY=${{ secrets.SIGNOZKEY }}
     - name: Docker compose Deploy app
       command: docker compose up -d --build
       args:
