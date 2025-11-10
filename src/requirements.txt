@@ -10,7 +10,6 @@ opentelemetry-exporter-otlp==1.29.0
 
 opentelemetry-instrumentation-flask==0.50b0
 opentelemetry-instrumentation-sqlalchemy==0.50b0
-opentelemetry-instrumentation-prometheus==0.50b0
 
 gunicorn==23.0.0
 prometheus-client==0.21.0
