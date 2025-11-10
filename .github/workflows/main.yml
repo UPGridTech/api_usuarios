@@ -68,5 +68,5 @@ jobs:
 
       - name: Healthcheck
         run: |
-          curl -f http://$VM_IP/healthz
+          curl -f http://$VM_IP:5000
         
