@@ -14,7 +14,8 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
-from opentelemetry.instrumentation.prometheus import PrometheusMetricsInstrumentor
+from prometheus_client import make_wsgi_app
+from werkzeug.middleware.dispatcher import DispatcherMiddleware
 
 PORT = int(os.getenv("PORT", 5000))
 DATABASE_URL = os.getenv("DATABASE_URL") or "postgresql://meuuser:supersegredo@db:5432/minhadb"
@@ -92,7 +93,9 @@ trace.get_tracer_provider().add_span_processor(span_processor)
 FlaskInstrumentor().instrument_app(app)
 SQLAlchemyInstrumentor().instrument(engine=engine)
 
-PrometheusMetricsInstrumentor().instrument(app)
+app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {
+    "/metrics": make_wsgi_app()
+})
 
 @app.route("/produtos", methods=["GET"])
 def get_produtos():
