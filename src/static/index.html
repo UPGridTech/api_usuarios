@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Supermercado CRUD</title>
+<link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Supermercado CRUD 🛒</h1>
+  </header>
+
+  <main>
+    <section id="form-section">
+      <h2 id="form-title">Adicionar Produtoss</h2>
+      <form id="produto-form">
+        <input type="hidden" id="produto-id" value="">
+        <label>Nome</label>
+        <input type="text" id="nome" required>
+
+        <label>Preço (R$)</label>
+        <input type="number" id="preco" step="0.01" required>
+
+        <label>Estoque</label>
+        <input type="number" id="estoque" required>
+
+        <label>Categoria</label>
+        <input type="text" id="categoria" required>
+
+        <button type="submit">Salvar</button>
+        <button type="button" id="cancel-btn" class="hidden">Cancelar</button>
+      </form>
+    </section>
+
+    <section id="produtos-section">
+      <h2>Lista de Produtos</h2>
+      <div id="produtos-list"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+const API = ''; // mesma origem
+
+async function request(url, opts = {}) {
+  const res = await fetch(API + url, opts);
+  const text = await res.text();
+  let data;
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  if (!res.ok) throw { status: res.status, body: data };
+  return data;
+}
+
+async function fetchProdutos() { return request('/produtos'); }
+async function createProduto(p) {
+  return request('/produtos', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(p)
+  });
+}
+async function updateProduto(id, p) {
+  return request(`/produtos/${id}`, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(p)
+  });
+}
+async function deleteProdutoApi(id) { return request(`/produtos/${id}`, {method:'DELETE'}); }
+
+function showStatus(msg, isError=false){
+  let el = document.getElementById('status-msg');
+  if(!el){
+    el = document.createElement('div');
+    el.id='status-msg';
+    el.style.margin='10px 0';
+    document.querySelector('.container').prepend(el);
+  }
+  el.textContent=msg;
+  el.style.color=isError?'crimson':'green';
+  setTimeout(()=>el.textContent='',2500);
+}
+
+function renderProdutos(produtos){
+  const list=document.getElementById('produtos-list');
+  list.innerHTML='';
+  if(!produtos.length){list.innerHTML='<p>Nenhum produto cadastrado.</p>';return;}
+  produtos.forEach(p=>{
+    const div=document.createElement('div');
+    div.className='card';
+    const preco=parseFloat(p.preco)||0;
+    div.innerHTML=`
+      <h3>${escapeHtml(p.nome)}</h3>
+      <p>Preço: R$ ${preco.toFixed(2)}</p>
+      <p>Estoque: ${p.estoque}</p>
+      <p>Categoria: ${escapeHtml(p.categoria||'-')}</p>
+      <div class="actions">
+        <button class="edit-btn">✏️ Editar</button>
+        <button class="delete-btn secondary">🗑️ Deletar</button>
+      </div>`;
+    div.querySelector('.edit-btn').onclick=()=>fillForm(p);
+    div.querySelector('.delete-btn').onclick=async()=>{
+      if(!confirm('Deseja deletar este produto?'))return;
+      try{await deleteProdutoApi(p.id);showStatus('Produto deletado');load();}
+      catch(e){showStatus('Erro ao deletar',true);}
+    };
+    list.appendChild(div);
+  });
+}
+
+function fillForm(p){
+  document.getElementById('produto-id').value=p.id;
+  document.getElementById('nome').value=p.nome;
+  document.getElementById('preco').value=p.preco;
+  document.getElementById('estoque').value=p.estoque;
+  document.getElementById('categoria').value=p.categoria||'';
+  document.getElementById('form-title').textContent='Editar Produto';
+  document.getElementById('cancel-btn').classList.remove('hidden');
+}
+
+document.getElementById('cancel-btn').onclick=()=>{
+  document.getElementById('produto-form').reset();
+  document.getElementById('produto-id').value='';
+  document.getElementById('form-title').textContent='Adicionar Produto';
+  document.getElementById('cancel-btn').classList.add('hidden');
+};
+
+document.getElementById('produto-form').onsubmit=async e=>{
+  e.preventDefault();
+  const id=document.getElementById('produto-id').value;
+  const produto={
+    nome:document.getElementById('nome').value,
+    preco:parseFloat(document.getElementById('preco').value),
+    estoque:parseInt(document.getElementById('estoque').value),
+    categoria_id:1
+  };
+  try{
+    if(id){await updateProduto(id,produto);showStatus('Produto atualizado');}
+    else{await createProduto(produto);showStatus('Produto criado');}
+    e.target.reset();
+    document.getElementById('produto-id').value='';
+    document.getElementById('form-title').textContent='Adicionar Produto';
+    document.getElementById('cancel-btn').classList.add('hidden');
+    load();
+  }catch(err){showStatus('Erro ao salvar',true);}
+};
+
+function escapeHtml(str){
+  return String(str).replaceAll('&','&amp;').replaceAll('<','&lt;')
+    .replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#039;");
+}
+
+async function load(){
+  try{const produtos=await fetchProdutos();renderProdutos(produtos);}
+  catch(e){showStatus('Erro ao carregar produtos',true);}
+}
+
+window.onload=load;
+</script>
+</body>
+</html>
