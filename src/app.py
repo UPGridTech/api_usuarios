@@ -6,7 +6,7 @@ from flask import Flask, jsonify, request, send_from_directory
 from sqlalchemy import create_engine, Column, Integer, String, Numeric, ForeignKey, text
 from sqlalchemy.orm import declarative_base, sessionmaker, scoped_session, relationship
 
-# OpenTelemetry imports
+# OpenTelemetry importss
 from opentelemetry import trace
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
