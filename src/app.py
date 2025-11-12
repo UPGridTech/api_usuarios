@@ -1,24 +1,30 @@
+#!/usr/bin/env python3
 import os
 import time
 import logging
 import json
+from urllib.parse import urlparse
+
 from flask import Flask, jsonify, request, send_from_directory
-from sqlalchemy import create_engine, Column, Integer, String, Numeric, ForeignKey, text
-from sqlalchemy.orm import declarative_base, sessionmaker, scoped_session, relationship
+from sqlalchemy import create_engine, Column, Integer, String, Numeric, ForeignK                                                                                                             ey, text
+from sqlalchemy.orm import declarative_base, sessionmaker, scoped_session, relat                                                                                                             ionship
 
 # OpenTelemetry imports
 from opentelemetry import trace
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport                                                                                                             er
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+
 from prometheus_client import make_wsgi_app
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
 
 PORT = int(os.getenv("PORT", 5000))
-DATABASE_URL = os.getenv("DATABASE_URL") or "postgresql://meuuser:supersegredo@db:5432/minhadb"
+DATABASE_URL = os.getenv("DATABASE_URL") or "postgresql://meuuser:supersegredo@d                                                                                                             b:5432/minhadb"
+
+# Old-style Signoz vars (you requested these)
 SIGNOZ_OTLP_URL = os.getenv("SIGNOZ_OTLP_URL")
 SIGNOZ_INGEST_KEY = os.getenv("SIGNOZ_INGEST_KEY")
 
@@ -27,7 +33,6 @@ app = Flask(__name__, static_folder="static", static_url_path="/static")
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = scoped_session(sessionmaker(bind=engine))
 Base = declarative_base()
-
 
 logger = logging.getLogger("supermercado")
 logger.setLevel(logging.INFO)
@@ -76,19 +81,52 @@ def wait_for_db(retries=20):
             time.sleep(2)
     return False
 
-
+service_name = os.getenv("SERVICE_NAME") or os.getenv("OTEL_SERVICE_NAME") or "s                                                                                                             upermercado-app"
 trace.set_tracer_provider(
-    TracerProvider(resource=Resource.create({SERVICE_NAME: "supermercado-app"}))
+    TracerProvider(resource=Resource.create({SERVICE_NAME: service_name}))
 )
 tracer = trace.get_tracer(__name__)
 
-otlp_exporter = OTLPSpanExporter(
-    endpoint=SIGNOZ_OTLP_URL,
-    insecure=False,  # SigNoz Cloud usa TLS
-    headers=(("x-signoz-ingest-key", SIGNOZ_INGEST_KEY),)
-)
-span_processor = BatchSpanProcessor(otlp_exporter)
-trace.get_tracer_provider().add_span_processor(span_processor)
+def normalize_signoz_endpoint(raw: str):
+    if not raw:
+        return None
+    raw = raw.strip()
+    if raw.startswith("http://") or raw.startswith("https://"):
+        parsed = urlparse(raw)
+        host = parsed.hostname
+        port = parsed.port or 4317
+        return f"{host}:{port}"
+    return raw
+
+endpoint = normalize_signoz_endpoint(SIGNOZ_OTLP_URL)
+
+# Defensive checks
+if not endpoint:
+    logger.error("SIGNOZ_OTLP_URL não definido. Traces NÃO serão enviados.")
+if not SIGNOZ_INGEST_KEY:
+    logger.error("SIGNOZ_INGEST_KEY não definido. Traces serão rejeitados como U                                                                                                             NAUTHENTICATED pelo SigNoz.")
+
+# Prepare multiple header variants to maximize compatibility
+headers = [
+    ("signoz-ingest-key", SIGNOZ_INGEST_KEY or ""),
+    ("signoz-ingestion-key", SIGNOZ_INGEST_KEY or ""),
+    ("x-signoz-ingest-key", SIGNOZ_INGEST_KEY or ""),
+]
+
+masked_key = (SIGNOZ_INGEST_KEY[:6] + "..." + SIGNOZ_INGEST_KEY[-4:]) if SIGNOZ_                                                                                                             INGEST_KEY else "<missing>"
+logger.info(f"OTLP exporter endpoint={endpoint}, header_names={[h[0] for h in he                                                                                                             aders]}, ingest_key_masked={masked_key}")
+
+try:
+    otlp_exporter = OTLPSpanExporter(
+        endpoint=endpoint or None,
+        insecure=False,
+        headers=tuple(headers),
+    )
+    span_processor = BatchSpanProcessor(otlp_exporter)
+    trace.get_tracer_provider().add_span_processor(span_processor)
+    logger.info("OTLPSpanExporter criado (enviando múltiplos headers para SigNoz                                                                                                             ).")
+except Exception as e:
+    logger.error(f"Erro ao criar OTLPSpanExporter: {e}")
 
 FlaskInstrumentor().instrument_app(app)
 SQLAlchemyInstrumentor().instrument(engine=engine)
@@ -97,6 +135,7 @@ app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {
     "/metrics": make_wsgi_app()
 })
 
+# ===== Routes =====
 @app.route("/produtos", methods=["GET"])
 def get_produtos():
     session = SessionLocal()
