@@ -1,4 +1,4 @@
-import os
+simport os
 import time
 import logging
 import json
@@ -20,7 +20,7 @@ from werkzeug.middleware.dispatcher import DispatcherMiddleware
 PORT = int(os.getenv("PORT", 5000))
 DATABASE_URL = os.getenv("DATABASE_URL") or "postgresql://meuuser:supersegredo@db:5432/minhadb"
 SIGNOZ_OTLP_URL = os.getenv("SIGNOZ_OTLP_URL")
-SIGNOZ_INGEST_KEY = PF0rQtvZdo00lgWLndHcKih-g3eNNS1-Uz5k
+SIGNOZ_INGEST_KEY = "PF0rQtvZdo00lgWLndHcKih-g3eNNS1-Uz5k"
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 
