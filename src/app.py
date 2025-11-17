@@ -85,7 +85,7 @@ tracer = trace.get_tracer(__name__)
 otlp_exporter = OTLPSpanExporter(
     endpoint=SIGNOZ_OTLP_URL,
     insecure=False,  # SigNoz Cloud usa TLS
-    headers=(("x-signoz-ingest-key", SIGNOZ_INGEST_KEY),)
+    headers=(("signoz-api-key", SIGNOZ_INGEST_KEY),)
 )
 span_processor = BatchSpanProcessor(otlp_exporter)
 trace.get_tracer_provider().add_span_processor(span_processor)
