@@ -1,0 +1,11 @@
+name: Autoscale
+
+on:
+  workflow_dispatch:   # Permite ser disparado manualmente ou via API
+
+jobs:
+  scale:
+    runs-on: self-hosted
+    steps:
+      - name: Debug
+        run: echo "Workflow disparado com sucesso!"
