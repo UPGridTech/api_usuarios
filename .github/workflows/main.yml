@@ -5,6 +5,7 @@ on:
     branches:
       - dev
     types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
 
 jobs:
   build-and-run:
