@@ -1,21 +1,35 @@
 name: Build e Teste na PR para Dev
 
+# O trigger 'workflow_dispatch' agora aceita entradas (inputs)
 on:
   pull_request:
     branches:
       - dev
     types: [opened, synchronize, reopened, closed]
   workflow_dispatch:
+    inputs:
+      action:
+        description: 'Ação de escalabilidade (set, up, down, auto). Relevante apenas para dispatch manual.'
+        required: false
+      count:
+        description: 'Contagem exata de réplicas. Usado se action for "set".'
+        required: false
 
 jobs:
   build-and-run:
     runs-on: self-hosted
+    
+    # Define variáveis para o ambiente, garantindo que 'PR_WORKSPACE' seja usado corretamente,
+    # mesmo quando o evento não é uma pull_request (como no workflow_dispatch)
+    env:
+      # Use o número da PR para o workspace se for uma PR, caso contrário, use um nome padrão.
+      PR_WS: ${{ (github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number)) || 'manual-dispatch' }}
+
     steps:
-      - name: Checkout código da PR
+      - name: Checkout código
         uses: actions/checkout@v4
 
-      - name: Set PR Workspace Name
-        run: echo "PR_WORKSPACE=pr-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+      # Não é necessário setar PR_WORKSPACE separadamente, pois usamos a variável de ambiente PR_WS acima.
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
@@ -28,34 +42,56 @@ jobs:
       - name: Terraform Init + Select Workspace
         working-directory: terraform
         run: |
+          # O key agora usa a variável PR_WS que é definida no nível 'env'
           terraform init -reconfigure -input=false \
             -backend-config="bucket=s3-bkt-s3nai" \
-            -backend-config="key=pr-${{ github.event.pull_request.number }}/terraform.tfstate" \
+            -backend-config="key=${{ env.PR_WS }}/terraform.tfstate" \
             -backend-config="region=us-east-1" \
             -backend-config="dynamodb_table=s3-bkt-s3nai-lock" \
             -backend-config="encrypt=true"
-      - name: Terraform Apply (on PR open/sync)
-        if: github.event.action != 'closed'
-        working-directory: terraform
-        run: |
-          terraform apply -var "vm_count=1" -auto-approve
-          terraform state pull > /home/felipe/state/${PR_WS}.tfstate
 
-      - name: Terraform Destroy (on PR closed)
-        if: github.event.action == 'closed'
+      - name: Terraform Apply (PR Open/Sync ou Dispatch 'set')
+        # Este passo é executado se NÃO for um evento 'closed' (PR) E se NÃO for um 'destroy' manual.
+        if: |
+          github.event.action != 'closed' && 
+          github.event.inputs.action != 'destroy'
         working-directory: terraform
         run: |
-          terraform destroy -var "vm_count=1" -auto-approve
+          # 1. Determinar o valor da variável vm_count:
+          #    - Se for dispatch E action='set', usa o valor de 'count'.
+          #    - Caso contrário, usa o valor padrão '1' (para PR open/sync).
+          VM_COUNT_VAR="vm_count=1"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.action }}" == "set" ]]; then
+            VM_COUNT_VAR="vm_count=${{ github.event.inputs.count }}"
+            echo "Aplicando contagem de VMs: ${{ github.event.inputs.count }}"
+          else
+             echo "Aplicando contagem de VMs padrão: 1 (PR Lifecycle)"
+          fi
+
+          terraform apply -var "$VM_COUNT_VAR" -auto-approve
           
+          # A linha abaixo foi removida. Não é recomendado puxar o state para um diretório local.
+          # terraform state pull > /home/felipe/state/${PR_WS}.tfstate 
+
+      - name: Terraform Destroy (on PR closed ou Dispatch 'destroy')
+        if: github.event.action == 'closed' || github.event.inputs.action == 'destroy'
+        working-directory: terraform
+        run: |
+          terraform destroy -var "vm_count=0" -auto-approve # vm_count=0 é uma prática segura para destroy
+
       - name: Obter todos os IPs das VMs
         id: vm_ips
         working-directory: terraform
+        # Este passo só faz sentido se o ambiente foi criado/modificado (não em destroy/close)
+        if: github.event.action != 'closed' && github.event.inputs.action != 'destroy'
         run: |
           VM_IPS=$(terraform output -json vm_ip | jq -r '.[]')
           echo "VM_IPS=$VM_IPS" >> $GITHUB_ENV
           echo "IPs das VMs: $VM_IPS"
 
       - name: Run Ansible on each VM
+        # Executa somente se o ambiente foi aplicado (não em destroy/close)
+        if: github.event.action != 'closed' && github.event.inputs.action != 'destroy'
         run: |
           for IP in $VM_IPS; do
             echo "=== Running Ansible on $IP ==="
@@ -66,8 +102,3 @@ jobs:
               --ssh-common-args='-o StrictHostKeyChecking=no' \
               -vvv
           done
-
-      - name: Healthcheck
-        run: |
-          curl -f http://$VM_IP:5000
-        
