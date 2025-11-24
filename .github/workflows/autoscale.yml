@@ -10,6 +10,10 @@ on:
       action:
         description: 'Ação de escalabilidade (set, up, down, auto). Relevante apenas para dispatch manual.'
         required: false
+      unique_id:
+        description: "ID único do autoscale"
+        required: true
+        type: string
       count:
         description: 'Contagem exata de réplicas. Usado se action for "set".'
         required: false
