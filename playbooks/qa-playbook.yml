@@ -93,7 +93,7 @@
       git:
         repo: "https://{{ github_token }}@github.com/UPGridTech/api_usuarios.git"
         dest: "{{ app_path }}"
-        version: "qa"
+        version: "{{ pr_branch }}"
         update: yes
         force: yes
         
