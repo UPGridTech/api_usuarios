@@ -1,1 +1,95 @@
+---
+- name: Implantar Aplicação em Produção (Docker Compose)
+  hosts: all
+  gather_facts: yes
 
+  vars:
+    # ---== ATENÇÃO: Defina os caminhos e versões de Produção ==---
+    app_path_prod: "/srv/api_usuarios_prod" # Caminho padrão em prod (ex: /srv ou /opt)
+    git_version_prod: "v1.0.0" # IMPORTANTE: Use uma TAG ou branch estável, NUNCA 'main' ou PRs
+
+    # As variáveis de segredos (github_token, postgres_user_prod, etc.)
+    # DEVEM vir do Ansible Vault (veja o README)
+
+  tasks:
+
+    - name: Atualizar cache de pacotes
+      apt:
+        update_cache: yes
+
+
+    - name: Instalar Git
+      apt:
+        name: git
+        state: present
+
+  
+    - name: Instalar pré-requisitos do Docker
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+
+    - name: Adicionar chave GPG do Docker
+      get_url:
+        url: https://download.docker.com/linux/debian/gpg
+        dest: /usr/share/keyrings/docker-archive-keyring.gpg
+        mode: '0644'
+
+    - name: Adicionar repositório Docker
+      apt_repository:
+        repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable"
+        state: present
+        filename: docker
+
+    - name: Instalar Docker
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Garantir que Docker esteja ativo
+      service:
+        name: docker
+        state: started
+        enabled: yes
+   
+
+
+    - name: Clonar repositório (Produção)
+      git:
+        repo: "https://{{ github_token }}@github.com/UPGridTech/api_usuarios.git"
+        dest: "{{ app_path_prod }}"
+        version: "{{ git_version_prod }}" # Controla a versão em PROD
+        update: yes
+        force: yes
+      no_log: true # Oculta a URL com token do log
+
+    - name: Criar .env em Produção  # Configurações de Produção
+      copy:
+        dest: "{{ app_path_prod }}/docker/.env"
+        content: |
+          POSTGRES_USER={{ postgres_user_prod }}
+          POSTGRES_PASSWORD={{ postgres_password_prod }}
+          POSTGRES_DB={{ postgres_db_prod }}
+          DATABASE_URL=postgresql://{{ postgres_user_prod }}:{{ postgres_password_prod }}@db:5432/{{ postgres_db_prod }}
+          # Adicione outras variáveis de ambiente de PROD aqui
+        mode: '0600' # Restringe permissões do arquivo .env
+      no_log: true # CRÍTICO: Impede que segredos vazem no log do Ansible
+
+    - name: Implantar aplicação com Docker Compose (Produção)
+      community.docker.docker_compose_v2:
+        project_src: "{{ app_path_prod }}/docker"
+        state: present
+        build: yes # ATENÇÃO: Veja o README sobre isso!
+        remove_orphans: yes
+      # Nota: Para usar 'community.docker.docker_compose_v2',
+      # você pode precisar rodar: ansible-galaxy collection install community.docker
