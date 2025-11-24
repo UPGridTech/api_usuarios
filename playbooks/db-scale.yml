@@ -2,17 +2,17 @@
 - name: Configurar Cliente Local e Provisionar Cluster CockroachDB
   hosts: all
   gather_facts: yes
-  become: yes # Necessário para instalar pacotes e gerenciar Docker
+  become: yes 
 
   vars:
-    # Variáveis originais do cliente
+    
     register_api_url: "http://haproxy.upgrid.local:5000/register"
     
     # Variáveis para o cluster CockroachDB (Nós Iniciais)
-    cockroach_nodes: 3 # Número de nós iniciais
-    cockroach_base_sql_port: 26257 # Porta SQL do roach1 no host
-    cockroach_base_http_port: 8080 # Porta HTTP do roach1 no host
-    cockroach_internal_port: 26357 # Porta de comunicação interna (join/advertise)
+    cockroach_nodes: 3 
+    cockroach_base_sql_port: 26257 
+    cockroach_base_http_port: 8080 
+    cockroach_internal_port: 26357 
     cockroach_join_addr: "roach1:{{ cockroach_internal_port }},roach2:{{ cockroach_internal_port }},roach3:{{ cockroach_internal_port }}"
     cockroach_image: "cockroachdb/cockroach:latest"
 
