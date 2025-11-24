@@ -1,9 +1,9 @@
-name: Build e Teste na PR para Dev
+name: Scalling + QA Branch
 
 on:
   pull_request:
     branches:
-      - dev
+      - qa
     types: [opened, synchronize, reopened, closed]
   workflow_dispatch:
     inputs:
