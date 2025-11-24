@@ -1,10 +1,9 @@
-name: Build e Teste na PR para Dev
+name: Scalling + QA Branch
 
-# O trigger 'workflow_dispatch' agora aceita entradas (inputs)
 on:
   pull_request:
     branches:
-      - dev
+      - qa
     types: [opened, synchronize, reopened, closed]
   workflow_dispatch:
     inputs:
@@ -22,14 +21,11 @@ jobs:
     # Define variáveis para o ambiente, garantindo que 'PR_WORKSPACE' seja usado corretamente,
     # mesmo quando o evento não é uma pull_request (como no workflow_dispatch)
     env:
-      # Use o número da PR para o workspace se for uma PR, caso contrário, use um nome padrão.
       PR_WS: ${{ (github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number)) || 'manual-dispatch' }}
 
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
-
-      # Não é necessário setar PR_WORKSPACE separadamente, pois usamos a variável de ambiente PR_WS acima.
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
@@ -57,9 +53,7 @@ jobs:
           github.event.inputs.action != 'destroy'
         working-directory: terraform
         run: |
-          # 1. Determinar o valor da variável vm_count:
           #    - Se for dispatch E action='set', usa o valor de 'count'.
-          #    - Caso contrário, usa o valor padrão '1' (para PR open/sync).
           VM_COUNT_VAR="vm_count=1"
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.action }}" == "set" ]]; then
             VM_COUNT_VAR="vm_count=${{ github.event.inputs.count }}"
@@ -70,19 +64,14 @@ jobs:
 
           terraform apply -var "$VM_COUNT_VAR" -auto-approve
           
-          # A linha abaixo foi removida. Não é recomendado puxar o state para um diretório local.
-          # terraform state pull > /home/felipe/state/${PR_WS}.tfstate 
-
       - name: Terraform Destroy (on PR closed ou Dispatch 'destroy')
         if: github.event.action == 'closed' || github.event.inputs.action == 'destroy'
         working-directory: terraform
         run: |
           terraform destroy -var "vm_count=0" -auto-approve # vm_count=0 é uma prática segura para destroy
-
       - name: Obter todos os IPs das VMs
         id: vm_ips
         working-directory: terraform
-        # Este passo só faz sentido se o ambiente foi criado/modificado (não em destroy/close)
         if: github.event.action != 'closed' && github.event.inputs.action != 'destroy'
         run: |
           VM_IPS=$(terraform output -json vm_ip | jq -r '.[]')
@@ -90,7 +79,6 @@ jobs:
           echo "IPs das VMs: $VM_IPS"
 
       - name: Run Ansible on each VM
-        # Executa somente se o ambiente foi aplicado (não em destroy/close)
         if: github.event.action != 'closed' && github.event.inputs.action != 'destroy'
         run: |
           for IP in $VM_IPS; do
@@ -98,7 +86,7 @@ jobs:
             ansible-playbook playbooks/dev-playbook.yml \
               -i "${IP}," \
               -u "${{ secrets.ANSIBLE_USER }}" \
-              --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} pr_branch=${{ github.event.pull_request.head.ref }} pr_number=${{ github.event.pull_request.number }} github_token=${{ secrets.GITHUB_PAT }} postgres_user=${{ secrets.POSTGRES_USER }} postgres_password=${{ secrets.POSTGRES_PASSWORD }} postgres_db=${{ secrets.POSTGRES_DB }} signoz_Key="PF0rQtvZdo00lgWLndHcKih-g3eNNS1-Uz5k" app_path=/home/felipe/src/" \
+              --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} pr_branch="qa" github_token=${{ secrets.GITHUB_PAT }} postgres_user=${{ secrets.POSTGRES_USER }} postgres_password=${{ secrets.POSTGRES_PASSWORD }} postgres_db=${{ secrets.POSTGRES_DB }} ansible_ip=${IP} signoz_Key="PF0rQtvZdo00lgWLndHcKih-g3eNNS1-Uz5k" app_path=/home/felipe/src/" \
               --ssh-common-args='-o StrictHostKeyChecking=no' \
               -vvv
           done
