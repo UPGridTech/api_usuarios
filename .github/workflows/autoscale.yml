@@ -10,6 +10,10 @@ on:
       action:
         description: 'Ação de escalabilidade (set, up, down, auto). Relevante apenas para dispatch manual.'
         required: false
+      unique_id:
+        description: "ID único do autoscale"
+        required: true
+        type: string
       count:
         description: 'Contagem exata de réplicas. Usado se action for "set".'
         required: false
@@ -19,10 +23,11 @@ jobs:
     runs-on: self-hosted
     
     # Define variáveis para o ambiente, garantindo que 'PR_WORKSPACE' seja usado corretamente,
-    # mesmo quando o evento não é uma pull_request (como no workflow_dispatch)
+    
     env:
-      PR_WS: ${{ (github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number)) || 'manual-dispatch' }}
-
+      PR_WS: ${{ github.event_name == 'pull_request'
+          && format('pr-{0}', github.event.pull_request.number)
+          || github.event.inputs.unique_id }}
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
@@ -83,7 +88,7 @@ jobs:
         run: |
           for IP in $VM_IPS; do
             echo "=== Running Ansible on $IP ==="
-            ansible-playbook playbooks/dev-playbook.yml \
+            ansible-playbook playbooks/qa-playbook.yml \
               -i "${IP}," \
               -u "${{ secrets.ANSIBLE_USER }}" \
               --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} pr_branch="qa" github_token=${{ secrets.GITHUB_PAT }} postgres_user=${{ secrets.POSTGRES_USER }} postgres_password=${{ secrets.POSTGRES_PASSWORD }} postgres_db=${{ secrets.POSTGRES_DB }} ansible_ip=${IP} signoz_Key="PF0rQtvZdo00lgWLndHcKih-g3eNNS1-Uz5k" app_path=/home/felipe/src/" \
