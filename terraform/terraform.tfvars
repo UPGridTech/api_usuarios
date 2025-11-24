@@ -7,6 +7,6 @@ mgmt_lan           = "VM Network"
 disk_size          = 20
 num_cpu            = 2
 ram_memory         = 2048
-template_name = "vm-template"
+template_name = "template-01-oficial"
 vsphere_cluster_name = "ClusterQA"
 domain = "upgrid.local"
