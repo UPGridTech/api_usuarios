@@ -84,7 +84,7 @@ jobs:
         run: |
           for IP in $VM_IPS; do
             echo "=== Running Ansible on $IP ==="
-            ansible-playbook playbooks/dev-playbook.yml \
+            ansible-playbook playbooks/qa-playbook.yml \
               -i "${IP}," \
               -u "${{ secrets.ANSIBLE_USER }}" \
               --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} pr_branch=${{ github.event.pull_request.head.ref }} pr_number=${{ github.event.pull_request.number }} github_token=${{ secrets.GITHUB_PAT }} postgres_user=${{ secrets.POSTGRES_USER }} postgres_password=${{ secrets.POSTGRES_PASSWORD }} postgres_db=${{ secrets.POSTGRES_DB }} signoz_Key="PF0rQtvZdo00lgWLndHcKih-g3eNNS1-Uz5k" app_path=/home/felipe/src/" \
