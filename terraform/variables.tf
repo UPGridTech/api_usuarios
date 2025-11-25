@@ -46,6 +46,8 @@ variable vsphere_cluster_name{}
 
 variable template_name {}
 
+variable vm_name {}
+
 variable domain {}
 
 variable disk_size {}
