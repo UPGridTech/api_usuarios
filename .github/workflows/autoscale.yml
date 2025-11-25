@@ -35,7 +35,7 @@ jobs:
             -backend-config="bucket=bkt-senai-02" \
             -backend-config="key=autoscaling/${{ github.event.inputs.vm_name }}/terraform.tfstate" \
             -backend-config="region=us-east-1" \
-            -backend-config="dynamodb_table=bkt-senai-02-lock" \
+            -backend-config="dynamodb_table=bkt-state-upgrid-tech-lock" \
             -backend-config="encrypt=true"
 
       - name: Terraform Apply (action = up)
