@@ -49,7 +49,10 @@ data "vsphere_virtual_machine" "template" {
 
 resource "vsphere_virtual_machine" "virtualmachine" {
   count             = var.vm_count
-  name = format("%s-%02d-%s", var.vm_name_base, count.index + 1, formatdate("YYYYMMDD-HHmmss", timestamp()))
+  name = format("%s-%02d", var.vm_name_base, count.index + 1)
+  lifecycle {
+    ignore_changes = [ name ]
+  }
   resource_pool_id  = data.vsphere_compute_cluster.cluster.resource_pool_id
   datastore_id      = data.vsphere_datastore.datastore.id
   force_power_off   = false
