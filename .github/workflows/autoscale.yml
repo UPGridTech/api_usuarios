@@ -1,33 +1,21 @@
-name: Scalling + QA Branch
+name: Autoscaling Runner
 
 on:
-  pull_request:
-    branches:
-      - qa
-    types: [opened, synchronize, reopened, closed]
   workflow_dispatch:
     inputs:
       action:
-        description: 'Ação de escalabilidade (set, up, down, auto). Relevante apenas para dispatch manual.'
-        required: false
-      unique_id:
-        description: "ID único do autoscale"
+        description: 'Ação: up | destroy'
         required: true
         type: string
-      count:
-        description: 'Contagem exata de réplicas. Usado se action for "set".'
-        required: false
+      vm_name:
+        description: 'Nome da VM (usado no caminho do tfstate)'
+        required: true
+        type: string
 
 jobs:
-  build-and-run:
+  autoscaling:
     runs-on: self-hosted
-    
-    # Define variáveis para o ambiente, garantindo que 'PR_WORKSPACE' seja usado corretamente,
-    
-    env:
-      PR_WS: ${{ github.event_name == 'pull_request'
-          && format('pr-{0}', github.event.pull_request.number)
-          || github.event.inputs.unique_id }}
+
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
@@ -40,58 +28,48 @@ jobs:
           aws-session-token: ${{ secrets.AWS_TOKEN_KEY }}
           aws-region: us-east-1
 
-      - name: Terraform Init + Select Workspace
+      - name: Terraform Init
         working-directory: terraform
         run: |
-          # O key agora usa a variável PR_WS que é definida no nível 'env'
           terraform init -reconfigure -input=false \
-            -backend-config="bucket=s3-bkt-s3nai" \
-            -backend-config="key=qa/${{ env.PR_WS }}/terraform.tfstate" \
+            -backend-config="bucket=bkt-senai-02" \
+            -backend-config="key=autoscaling/${{ github.event.inputs.vm_name }}/terraform.tfstate" \
             -backend-config="region=us-east-1" \
-            -backend-config="dynamodb_table=s3-bkt-s3nai-lock" \
+            -backend-config="dynamodb_table=bkt-senai-02-lock" \
             -backend-config="encrypt=true"
 
-      - name: Terraform Apply (PR Open/Sync ou Dispatch 'set')
-        # Este passo é executado se NÃO for um evento 'closed' (PR) E se NÃO for um 'destroy' manual.
-        if: |
-          github.event.action != 'closed' && 
-          github.event.inputs.action != 'destroy'
+      - name: Terraform Apply (action = up)
+        if: github.event.inputs.action == 'up'
         working-directory: terraform
         run: |
-          #    - Se for dispatch E action='set', usa o valor de 'count'.
-          VM_COUNT_VAR="vm_count=1"
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.action }}" == "set" ]]; then
-            VM_COUNT_VAR="vm_count=${{ github.event.inputs.count }}"
-            echo "Aplicando contagem de VMs: ${{ github.event.inputs.count }}"
-          else
-             echo "Aplicando contagem de VMs padrão: 1 (PR Lifecycle)"
-          fi
+          terraform apply \
+            -var "vm_name=${{ github.event.inputs.vm_name }}" \
+            -auto-approve
 
-          terraform apply -var "$VM_COUNT_VAR" -auto-approve
-          
-      - name: Terraform Destroy (on PR closed ou Dispatch 'destroy')
-        if: github.event.action == 'closed' || github.event.inputs.action == 'destroy'
+      - name: Terraform Destroy (action = destroy)
+        if: github.event.inputs.action == 'destroy'
         working-directory: terraform
         run: |
-          terraform destroy -var "vm_count=0" -auto-approve # vm_count=0 é uma prática segura para destroy
-      - name: Obter todos os IPs das VMs
-        id: vm_ips
-        working-directory: terraform
-        if: github.event.action != 'closed' && github.event.inputs.action != 'destroy'
-        run: |
-          VM_IPS=$(terraform output -json vm_ip | jq -r '.[]')
-          echo "VM_IPS=$VM_IPS" >> $GITHUB_ENV
-          echo "IPs das VMs: $VM_IPS"
+          terraform destroy \
+            -var "vm_name=${{ github.event.inputs.vm_name }}" \
+            -auto-approve
 
-      - name: Run Ansible on each VM
-        if: github.event.action != 'closed' && github.event.inputs.action != 'destroy'
+      - name: Obter IP da VM criada
+        id: vm_ip
+        working-directory: terraform
+        if: github.event.inputs.action == 'up'
         run: |
-          for IP in $VM_IPS; do
-            echo "=== Running Ansible on $IP ==="
-            ansible-playbook playbooks/qa-playbook.yml \
-              -i "${IP}," \
-              -u "${{ secrets.ANSIBLE_USER }}" \
-              --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} pr_branch="qa" github_token=${{ secrets.GITHUB_PAT }} postgres_user=${{ secrets.POSTGRES_USER }} postgres_password=${{ secrets.POSTGRES_PASSWORD }} postgres_db=${{ secrets.POSTGRES_DB }} ansible_ip=${IP} signoz_Key="PF0rQtvZdo00lgWLndHcKih-g3eNNS1-Uz5k" app_path=/home/felipe/src/" \
-              --ssh-common-args='-o StrictHostKeyChecking=no' \
-              -vvv
-          done
+          VM_IP=$(terraform output -json vm_ip | jq -r '.')
+          echo "VM_IP=$VM_IP" >> $GITHUB_ENV
+          echo "IP da VM: $VM_IP"
+
+      - name: Run Ansible
+        if: github.event.inputs.action == 'up'
+        run: |
+          echo "=== Running Ansible on $VM_IP ==="
+          ansible-playbook playbooks/qa-playbook.yml \
+            -i "${VM_IP}," \
+            -u "${{ secrets.ANSIBLE_USER }}" \
+            --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} vm_name=${{ github.event.inputs.vm_name }} github_token=${{ secrets.GITHUB_PAT }} postgres_user=${{ secrets.POSTGRES_USER }} postgres_password=${{ secrets.POSTGRES_PASSWORD }} postgres_db=${{ secrets.POSTGRES_DB }} ansible_ip=${VM_IP} app_path=/home/felipe/src/" \
+            --ssh-common-args='-o StrictHostKeyChecking=no' \
+            -vvv
