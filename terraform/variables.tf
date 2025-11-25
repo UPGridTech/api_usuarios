@@ -48,8 +48,6 @@ variable template_name {}
 
 variable domain {}
 
-variable vm_count {}
-
 variable disk_size {}
 
 variable "num_cpu" {}
