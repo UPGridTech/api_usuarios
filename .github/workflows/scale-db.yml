@@ -1,4 +1,4 @@
-name: Autoscaling Runner
+name: Autoscaling DBCluster
 
 on:
   workflow_dispatch:
