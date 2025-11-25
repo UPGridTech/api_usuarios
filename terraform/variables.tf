@@ -48,6 +48,8 @@ variable template_name {}
 
 variable domain {}
 
+variable "vsphere_network" {}
+
 variable vm_count {}
 
 variable disk_size {}
