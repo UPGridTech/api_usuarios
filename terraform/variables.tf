@@ -48,8 +48,6 @@ variable template_name {}
 
 variable domain {}
 
-variable "vsphere_network" {}
-
 variable vm_count {}
 
 variable disk_size {}
@@ -57,6 +55,3 @@ variable disk_size {}
 variable "num_cpu" {}
 
 variable "ram_memory" {}
-
-
-
