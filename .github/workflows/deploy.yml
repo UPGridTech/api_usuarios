@@ -1,0 +1,77 @@
+# .github/workflows/deploy.yml
+name: CI/CD da Aplicação para ECS/EC2
+
+on:
+  push:
+    branches:
+      - main # Roda quando houver push na branch 'main'
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REPOSITORY: webapp-repo # Nome do seu repositório ECR
+  ECS_CLUSTER: ecs-cluster     # Nome do seu cluster ECS
+  ECS_SERVICE: webapp-svc      # Nome do seu serviço ECS
+  ECS_TASK_DEFINITION_FAMILY: webapp # Nome da família da Task Definition
+
+jobs:
+  deploy:
+    name: Build, Push e Deploy
+    runs-on: self-hosted
+    
+    steps:
+    - name: Checkout do Código
+      uses: actions/checkout@v4
+
+    # 1. Configura as Credenciais AWS
+    - name: Configurar Credenciais AWS
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    # 2. Autentica o Docker no ECR (Docker Login)
+    - name: Login no Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    # 3. Docker Build e Tag (Cria a imagem)
+    - name: Construir, Taggear e Mapear Imagem
+      id: build-image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }} # Usa o hash do commit como tag
+      run: |
+        # O Dockerfile deve estar na raiz do seu projeto
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        # Cria a tag 'latest' para facilitar a atualização da Task Definition
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        echo "latest_image=$ECR_REGISTRY/$ECR_REPOSITORY:latest" >> $GITHUB_OUTPUT
+
+    # 4. Docker Push (Envia a imagem para o ECR)
+    - name: Push da Imagem para o Amazon ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+    # 5. Cria um Novo Arquivo de Task Definition
+    - name: Renderizar Novo Task Definition
+      id: render-task
+      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      with:
+        task-definition: task-definition.json # Arquivo modelo que você criará
+        container-name: webapp-ctr          # Nome do container (deve bater com 'ecs-service.tf')
+        image: ${{ steps.build-image.outputs.latest_image }} # Nova imagem
+
+    # 6. Atualiza o Serviço ECS
+    - name: Deploy da Nova Imagem no Serviço ECS
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      with:
+        task-definition: ${{ steps.render-task.outputs.task-definition }}
+        service: ${{ env.ECS_SERVICE }}
+        cluster: ${{ env.ECS_CLUSTER }}
+        wait-for-service-stability: true
