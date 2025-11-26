@@ -1,6 +1,7 @@
 ---
 - name: Configurar CockroachDB sem TLS + registro no HAProxy
   hosts: all
+  become: yes
   gather_facts: yes
 
   vars:
@@ -8,6 +9,9 @@
     cluster_name: "upgrid-db"
     data_dir: "/var/lib/cockroach/data"
     cockroach_bin: "/usr/local/bin/cockroach"
+    cockroach_version: "v24.1.3"
+    cockroach_tgz: "/tmp/cockroach.tgz"
+    cockroach_extract_dir: "/tmp/cockroach-{{ cockroach_version }}.linux-amd64"
     cluster_join_addr: "haproxy.upgrid.local:26257"
 
   tasks:
@@ -32,41 +36,50 @@
         group: root
         mode: "0755"
 
-    # ==========================
-    # DOWNLOAD BINÁRIO COCKROACH
-    # ==========================
-
-    - name: Verificar se o binário já foi baixado
+    # ================
+    # Verifica binário
+    # ================
+    - name: Verificar se cockroach já está instalado
       stat:
-        path: /tmp/cockroach.tgz
-      register: cockroach_tgz
+        path: "{{ cockroach_bin }}"
+      register: cockroach_bin_stat
 
-    - name: Baixar CockroachDB
+    - name: Verificar se o tar.gz já existe
+      stat:
+        path: "{{ cockroach_tgz }}"
+      register: cockroach_tgz_stat
+
+    # ==========================
+    # DOWNLOAD BINÁRIO (remoto)
+    # ==========================
+    - name: Baixar CockroachDB (apenas se não existir)
       get_url:
-        url: https://binaries.cockroachdb.com/cockroach-v24.1.3.linux-amd64.tgz
-        dest: /tmp/cockroach.tgz
+        url: "https://binaries.cockroachdb.com/cockroach-{{ cockroach_version }}.linux-amd64.tgz"
+        dest: "{{ cockroach_tgz }}"
         mode: "0644"
-      when: not cockroach_tgz.stat.exists
+      when: not cockroach_bin_stat.stat.exists and not cockroach_tgz_stat.stat.exists
 
-    - name: Extrair CockroachDB
+    - name: Extrair CockroachDB (apenas se não existir)
       unarchive:
-        src: /tmp/cockroach.tgz
+        src: "{{ cockroach_tgz }}"
         dest: /tmp/
         remote_src: yes
-      when: not cockroach_tgz.stat.exists
+      when: not cockroach_bin_stat.stat.exists and not cockroach_tgz_stat.stat.exists
 
-    - name: Copiar binário do CockroachDB
-      copy:
-        src: "/tmp/cockroach-v24.1.3.linux-amd64/cockroach"
-        dest: "{{ cockroach_bin }}"
-        mode: '0755'
+    # =================================================
+    # Instalar binário a partir do diretório já extraído
+    # Usa 'creates' para ser idempotente no remoto
+    # =================================================
+    - name: Instalar binário cockroach no /usr/local/bin
+      command: >
+        install -m 0755 {{ cockroach_extract_dir }}/cockroach {{ cockroach_bin }}
       args:
-        force: yes
+        creates: "{{ cockroach_bin }}"
+      when: not cockroach_bin_stat.stat.exists
 
-    # ==========================
+    # ================
     # SYSTEMD SERVICE
-    # ==========================
-
+    # ================
     - name: Criar service do CockroachDB
       copy:
         dest: /etc/systemd/system/cockroach.service
@@ -97,8 +110,8 @@
     - name: Reload systemd
       command: systemctl daemon-reload
 
-    - name: Iniciar CockroachDB
-      service:
+    - name: Enable and start cockroach
+      systemd:
         name: cockroach
         state: restarted
         enabled: yes
@@ -106,11 +119,11 @@
     # ==========================
     # HEALTHCHECK
     # ==========================
-
-    - name: Verificar se o nó está online
+    - name: Wait for HTTP health endpoint to be ready
       uri:
         url: "http://localhost:8080/health"
         status_code: 200
+        timeout: 5
       register: health
       retries: 20
       delay: 5
@@ -119,8 +132,7 @@
     # ==========================
     # REGISTRO NO HAProxy via API
     # ==========================
-
-    - name: Registrar nó no HAProxy
+    - name: Registrar nó no HAProxy (apenas porta SQL 26257)
       uri:
         url: "{{ register_api_url }}"
         method: POST
@@ -128,19 +140,16 @@
           Content-Type: "application/json"
         body_format: json
         body:
-          node: "{{ ansible_hostname }}"
           ip: "{{ ansible_default_ipv4.address }}"
-          ports:
-            - 26257
-            - 8080
+          port: 26257
         status_code: 200,201,202,204
       register: register_response
-      retries: 5
-      delay: 3
+      retries: 6
+      delay: 5
       until: register_response.status in [200,201,202,204]
 
-    - name: Resultado do registro
+    - name: Mostrar resultado do registro
       debug:
         msg:
           - "Status API: {{ register_response.status }}"
-          - "{{ register_response.content }}"
+          - "{{ register_response.content | default('no-content') }}"
