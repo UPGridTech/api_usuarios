@@ -43,6 +43,7 @@ jobs:
         IMAGE_TAG: ${{ github.sha }} # Usa o hash do commit como tag
       run: |
         # O Dockerfile deve estar na raiz do seu projeto
+        cd /src/docker
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
         # Cria a tag 'latest' para facilitar a atualização da Task Definition
         docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
