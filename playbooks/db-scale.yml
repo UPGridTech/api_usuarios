@@ -9,7 +9,7 @@
     cluster_name: "upgrid-db"
     data_dir: "/var/lib/cockroach/data"
     cockroach_bin: "/usr/local/bin/cockroach"
-    cockroach_version: "v24.1.3"
+    cockroach_version: "v25.3.2"
     cockroach_tgz: "/tmp/cockroach.tgz"
     cockroach_extract_dir: "/tmp/cockroach-{{ cockroach_version }}.linux-amd64"
     cluster_join_addr: "haproxy.upgrid.local:26257"
