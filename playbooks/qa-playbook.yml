@@ -4,7 +4,7 @@
   gather_facts: yes
 
   vars:
-    register_api_url: "http://haproxy.upgrid.local:5000/register"
+    register_api_url: "http://haproxy.upgrid.local:5000/register/app"
 
   tasks:
 
