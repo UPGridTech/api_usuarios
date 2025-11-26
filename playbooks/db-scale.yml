@@ -1,10 +1,11 @@
 ---
-- name: Configurar nó CockroachDB sem TLS + registrar no HAProxy
+- name: Configurar CockroachDB sem TLS + registro no HAProxy
   hosts: all
   gather_facts: yes
 
   vars:
     register_api_url: "http://haproxy.upgrid.local:5000/register/db"
+    cluster_name: "upgrid-db"
     data_dir: "/var/lib/cockroach/data"
     cockroach_bin: "/usr/local/bin/cockroach"
     cluster_join_addr: "haproxy.upgrid.local:26257"
@@ -27,24 +28,34 @@
       file:
         path: "{{ data_dir }}"
         state: directory
+        owner: root
+        group: root
         mode: "0755"
+
+    # ==========================
+    # DOWNLOAD BINÁRIO COCKROACH
+    # ==========================
+
+    - name: Verificar se o binário já foi baixado
+      stat:
+        path: /tmp/cockroach.tgz
+      register: cockroach_tgz
 
     - name: Baixar CockroachDB
       get_url:
         url: https://binaries.cockroachdb.com/cockroach-v24.1.3.linux-amd64.tgz
         dest: /tmp/cockroach.tgz
-      args:
-        creates: /tmp/cockroach.tgz
+        mode: "0644"
+      when: not cockroach_tgz.stat.exists
 
     - name: Extrair CockroachDB
       unarchive:
         src: /tmp/cockroach.tgz
         dest: /tmp/
         remote_src: yes
-      args:
-        creates: /tmp/cockroach-v24.1.3.linux-amd64
+      when: not cockroach_tgz.stat.exists
 
-    - name: Copiar binário
+    - name: Copiar binário do CockroachDB
       copy:
         src: "/tmp/cockroach-v24.1.3.linux-amd64/cockroach"
         dest: "{{ cockroach_bin }}"
@@ -52,30 +63,33 @@
       args:
         force: yes
 
-    - name: Criar systemd service do CockroachDB
+    # ==========================
+    # SYSTEMD SERVICE
+    # ==========================
+
+    - name: Criar service do CockroachDB
       copy:
         dest: /etc/systemd/system/cockroach.service
         content: |
           [Unit]
-          Description=CockroachDB node (insecure)
+          Description=CockroachDB node (NO TLS)
           After=network-online.target
           Wants=network-online.target
 
           [Service]
           Type=notify
           ExecStart={{ cockroach_bin }} start \
-            --store={{ data_dir }} \
-            --advertise-addr={{ ansible_hostname }}.upgrid.local:26257 \
-            --listen-addr=0.0.0.0:26357 \
-            --sql-addr=0.0.0.0:26257 \
-            --http-addr=0.0.0.0:8080 \
             --insecure \
+            --store={{ data_dir }} \
+            --advertise-addr={{ ansible_default_ipv4.address }} \
+            --listen-addr=0.0.0.0:26257 \
+            --http-addr=0.0.0.0:8080 \
             --join={{ cluster_join_addr }} \
             --cache=1GB \
             --max-sql-memory=1GB
 
           Restart=always
-          RestartSec=5
+          RestartSec=10
 
           [Install]
           WantedBy=multi-user.target
@@ -88,17 +102,25 @@
         name: cockroach
         state: restarted
         enabled: yes
-        
-    - name: Verificar se o nó está pronto
+
+    # ==========================
+    # HEALTHCHECK
+    # ==========================
+
+    - name: Verificar se o nó está online
       uri:
-        url: "http://localhost:8080/health?ready=1"
+        url: "http://localhost:8080/health"
         status_code: 200
       register: health
       retries: 20
       delay: 5
       until: health.status == 200
 
-    - name: Registrar as portas no HAProxy
+    # ==========================
+    # REGISTRO NO HAProxy via API
+    # ==========================
+
+    - name: Registrar nó no HAProxy
       uri:
         url: "{{ register_api_url }}"
         method: POST
@@ -110,14 +132,15 @@
           ip: "{{ ansible_default_ipv4.address }}"
           ports:
             - 26257
+            - 8080
         status_code: 200,201,202,204
       register: register_response
       retries: 5
-      delay: 5
+      delay: 3
       until: register_response.status in [200,201,202,204]
 
-    - name: Resposta
+    - name: Resultado do registro
       debug:
         msg:
-          - "Registro: {{ register_response.status }}"
+          - "Status API: {{ register_response.status }}"
           - "{{ register_response.content }}"
