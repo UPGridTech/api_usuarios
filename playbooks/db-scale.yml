@@ -1,196 +1,155 @@
 ---
-- name: Configurar Cliente Local e Provisionar Cluster CockroachDB
+- name: Configurar CockroachDB sem TLS + registro no HAProxy
   hosts: all
+  become: yes
   gather_facts: yes
-  become: yes 
 
   vars:
-    
-    register_api_url: "http://haproxy.upgrid.local:5000/register"
-    
-    # Variáveis para o cluster CockroachDB (Nós Iniciais)
-    cockroach_nodes: 3 
-    cockroach_base_sql_port: 26257 
-    cockroach_base_http_port: 8080 
-    cockroach_internal_port: 26357 
-    cockroach_join_addr: "roach1:{{ cockroach_internal_port }},roach2:{{ cockroach_internal_port }},roach3:{{ cockroach_internal_port }}"
-    cockroach_image: "cockroachdb/cockroach:latest"
+    register_api_url: "http://haproxy.upgrid.local:5000/register/db"
+    cluster_name: "upgrid-db"
+    data_dir: "/var/lib/cockroach/data"
+    cockroach_bin: "/usr/local/bin/cockroach"
+    cockroach_version: "v25.3.2"
+    cockroach_tgz: "/tmp/cockroach.tgz"
+    cockroach_extract_dir: "/tmp/cockroach-{{ cockroach_version }}.linux-amd64"
+    cluster_join_addr: "172.16.58.23:26257"
 
   tasks:
 
-    # --- 1. INSTALAÇÃO DOCKER (SUAS TASKS ORIGINAIS) ---
-
-    - name: Garantir que o cache de pacotes esteja atualizado e fazer o upgrade
-      ansible.builtin.apt:
+    - name: Atualizar pacotes
+      apt:
         update_cache: yes
         upgrade: dist
 
-    - name: Instalar Git e pré-requisitos do Docker
-      ansible.builtin.apt:
+    - name: Instalar dependências
+      apt:
         name:
-          - git
-          - apt-transport-https
-          - ca-certificates
-          - curl
-          - gnupg
-          - lsb-release
+          - wget
+          - tar
         state: present
 
-    - name: Adicionar chave GPG do Docker
-      ansible.builtin.get_url:
-        url: https://download.docker.com/linux/debian/gpg
-        dest: /usr/share/keyrings/docker-archive-keyring.gpg
-        mode: '0644'
+    - name: Criar diretório de dados
+      file:
+        path: "{{ data_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
 
-    - name: Adicionar repositório Docker
-      ansible.builtin.apt_repository:
-        repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable"
-        state: present
-        filename: docker
+    # ================
+    # Verifica binário
+    # ================
+    - name: Verificar se cockroach já está instalado
+      stat:
+        path: "{{ cockroach_bin }}"
+      register: cockroach_bin_stat
 
-    - name: Instalar Docker e Plugins
-      ansible.builtin.apt:
-        name:
-          - docker-ce
-          - docker-ce-cli
-          - containerd.io
-          - docker-compose-plugin
-        state: present
-        update_cache: yes
+    - name: Verificar se o tar.gz já existe
+      stat:
+        path: "{{ cockroach_tgz }}"
+      register: cockroach_tgz_stat
 
-    - name: Garantir que Docker esteja ativo
-      ansible.builtin.service:
-        name: docker
-        state: started
+    # ==========================
+    # DOWNLOAD BINÁRIO (remoto)
+    # ==========================
+    - name: Baixar CockroachDB (apenas se não existir)
+      get_url:
+        url: "https://binaries.cockroachdb.com/cockroach-{{ cockroach_version }}.linux-amd64.tgz"
+        dest: "{{ cockroach_tgz }}"
+        mode: "0644"
+      when: not cockroach_bin_stat.stat.exists and not cockroach_tgz_stat.stat.exists
+
+    - name: Extrair CockroachDB (apenas se não existir)
+      unarchive:
+        src: "{{ cockroach_tgz }}"
+        dest: /tmp/
+        remote_src: yes
+      when: not cockroach_bin_stat.stat.exists and not cockroach_tgz_stat.stat.exists
+
+    # =================================================
+    # Instalar binário a partir do diretório já extraído
+    # Usa 'creates' para ser idempotente no remoto
+    # =================================================
+    - name: Instalar binário cockroach no /usr/local/bin
+      command: >
+        install -m 0755 {{ cockroach_extract_dir }}/cockroach {{ cockroach_bin }}
+      args:
+        creates: "{{ cockroach_bin }}"
+      when: not cockroach_bin_stat.stat.exists
+
+    # ================
+    # SYSTEMD SERVICE
+    # ================
+    - name: Criar service do CockroachDB
+      copy:
+        dest: /etc/systemd/system/cockroach.service
+        content: |
+          [Unit]
+          Description=CockroachDB node (NO TLS)
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=notify
+          ExecStart={{ cockroach_bin }} start \
+            --insecure \
+            --store={{ data_dir }} \
+            --advertise-addr={{ ansible_default_ipv4.address }} \
+            --listen-addr=0.0.0.0:26257 \
+            --http-addr=0.0.0.0:8080 \
+            --join={{ cluster_join_addr }} \
+            --cache=1GB \
+            --max-sql-memory=1GB
+
+          Restart=always
+          RestartSec=10
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Reload systemd
+      command: systemctl daemon-reload
+
+    - name: Enable and start cockroach
+      systemd:
+        name: cockroach
+        state: restarted
         enabled: yes
 
-    # --- 2. REGISTRO NA API (SUAS TASKS ORIGINAIS) ---
+    # ==========================
+    # HEALTHCHECK
+    # ==========================
+    - name: Wait for HTTP health endpoint to be ready
+      uri:
+        url: "http://localhost:8080/health"
+        status_code: 200
+        timeout: 5
+      register: health
+      retries: 20
+      delay: 5
+      until: health.status == 200
 
-    - name: Registrar cliente na API
-      ansible.builtin.uri:
+    # ==========================
+    # REGISTRO NO HAProxy via API
+    # ==========================
+    - name: Registrar nó no HAProxy (apenas porta SQL 26257)
+      uri:
         url: "{{ register_api_url }}"
         method: POST
         headers:
           Content-Type: "application/json"
         body_format: json
         body:
-          name: "{{ ansible_hostname }}"
-          ip: "{{ ansible_default_ipv4.address }}" # Usando a variável correta para IP
-          port: 80
-          backend: "bk_web_apps"
+          ip: "{{ ansible_default_ipv4.address }}"
+          port: 26257
         status_code: 200,201,202,204
-        return_content: yes
       register: register_response
-      retries: 4
+      retries: 6
       delay: 5
-      until: register_response.status is defined and register_response.status in [200,201,202,204]
+      until: register_response.status in [200,201,202,204]
 
     - name: Mostrar resultado do registro
-      ansible.builtin.debug:
+      debug:
         msg:
-          - "Status HTTP: {{ register_response.status | default('no-status') }}"
-          - "Conteúdo: {{ register_response.content | default('no-content') }}"
-
-    - name: Falhar se registro não ocorreu
-      ansible.builtin.fail:
-        msg: "Registro falhou: HTTP={{ register_response.status | default('no-status')}}"
-      when: register_response.status not in [200,201,202,204]
-
-    # --- 3. PROVISIONAMENTO INICIAL COCKROACHDB (3 NÓS) ---
-
-    - name: Criar network bridge 'roachnet'
-      community.docker.docker_network:
-        name: roachnet
-        driver: bridge
-        state: present
-    
-    - name: Criar volumes para os nós iniciais CockroachDB
-      community.docker.docker_volume:
-        name: "roach{{ item }}"
-        state: present
-      loop: "{{ range(1, cockroach_nodes + 1) | list }}"
-    
-    - name: Rodar containers CockroachDB iniciais
-      community.docker.docker_container:
-        name: "roach{{ item }}"
-        hostname: "roach{{ item }}"
-        image: "{{ cockroach_image }}"
-        state: started
-        restart_policy: always
-        network_mode: roachnet
-        ports:
-          # Mapeamento dinâmico de portas SQL e HTTP no HOST
-          - "{{ cockroach_base_sql_port + item - 1 }}:{{ cockroach_base_sql_port + item - 1 }}"
-          - "{{ cockroach_base_http_port + item - 1 }}:{{ cockroach_base_http_port + item - 1 }}"
-        volumes:
-          - "roach{{ item }}:/cockroach/cockroach-data"
-        command: >
-          start 
-          --advertise-addr=roach{{ item }}:{{ cockroach_internal_port }}
-          --http-addr=roach{{ item }}:{{ cockroach_base_http_port + item - 1 }}
-          --listen-addr=roach{{ item }}:{{ cockroach_internal_port }}
-          --sql-addr=roach{{ item }}:{{ cockroach_base_sql_port + item - 1 }}
-          --insecure
-          --join={{ cockroach_join_addr }}
-      loop: "{{ range(1, cockroach_nodes + 1) | list }}"
-      register: initial_deployment
-
-    - name: Inicializar Cluster CockroachDB (apenas se a implantação inicial foi bem-sucedida)
-      ansible.builtin.shell: |
-        docker exec -i roach1 ./cockroach init --host=roach1:{{ cockroach_internal_port }} --insecure
-      register: init_result
-      changed_when: "'initialized cluster' in init_result.stdout"
-      # Usa um marcador de arquivo para garantir que rode apenas uma vez (melhor prática de idempotência)
-      args:
-        creates: /etc/cockroachdb_initialized 
-
-    - name: Criar arquivo marcador de inicialização
-      ansible.builtin.file:
-        path: /etc/cockroachdb_initialized
-        state: touch
-      when: init_result.changed
-
-    # --- 4. AUTOSCALING (ADIÇÃO DE NOVO NÓ) ---
-
-    # Esta task será executada SOMENTE se você passar a variável 'new_node_index' 
-    # e se ela for maior que o número de nós iniciais (3).
-    - name: Adicionar Novo Nó CockroachDB (Autoscaling)
-      when: new_node_index is defined and new_node_index | int > cockroach_nodes
-      block:
-        - name: Definir variáveis do novo nó
-          ansible.builtin.set_fact:
-            new_sql_port: "{{ cockroach_base_sql_port + new_node_index | int - 1 }}"
-            new_http_port: "{{ cockroach_base_http_port + new_node_index | int - 1 }}"
-            new_node_name: "roach{{ new_node_index }}"
-
-        - name: Criar volume para o novo nó '{{ new_node_name }}'
-          community.docker.docker_volume:
-            name: "{{ new_node_name }}"
-            state: present
-
-        - name: Rodar container CockroachDB para o novo nó
-          community.docker.docker_container:
-            name: "{{ new_node_name }}"
-            hostname: "{{ new_node_name }}"
-            image: "{{ cockroach_image }}"
-            state: started
-            restart_policy: always
-            network_mode: roachnet
-            ports:
-              # As portas são calculadas dinamicamente
-              - "{{ new_sql_port }}:{{ new_sql_port }}" 
-              - "{{ new_http_port }}:{{ new_http_port }}" 
-            volumes:
-              - "{{ new_node_name }}:/cockroach/cockroach-data"
-            command: >
-              start 
-              --advertise-addr={{ new_node_name }}:{{ cockroach_internal_port }}
-              --http-addr={{ new_http_port }}
-              --listen-addr={{ new_node_name }}:{{ cockroach_internal_port }}
-              --sql-addr={{ new_sql_port }}
-              --insecure
-              --join={{ cockroach_join_addr }}
-          
-        - name: Mostrar que o novo nó foi adicionado
-          ansible.builtin.debug:
-            msg: "Nó {{ new_node_name }} adicionado com portas SQL: {{ new_sql_port }} e HTTP: {{ new_http_port }}"
+          - "Status API: {{ register_response.status }}"
+          - "{{ register_response.content | default('no-content') }}"
