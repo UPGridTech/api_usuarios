@@ -53,14 +53,12 @@ jobs:
       - name: Obter IP da VM criada
         id: vm_ip
         working-directory: terraform
-        if: github.event.inputs.action == 'up'
         run: |
           VM_IP=$(terraform output -json vm_ip | jq -r '.')
           echo "VM_IP=$VM_IP" >> $GITHUB_ENV
           echo "IP da VM: $VM_IP"
 
       - name: Run Ansible
-        if: github.event.inputs.action == 'up'
         run: |
           echo "=== Running Ansible on $VM_IP ==="
           ansible-playbook playbooks/qa-playbook.yml \
