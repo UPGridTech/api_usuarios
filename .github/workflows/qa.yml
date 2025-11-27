@@ -3,7 +3,7 @@ name: QA Init Cluster
 on:
  pull_request:
     branches:
-      - dev
+      - qa
     types: [opened, synchronize, reopened, closed]
 
 jobs:
