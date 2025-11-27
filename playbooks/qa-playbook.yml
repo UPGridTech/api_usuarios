@@ -4,7 +4,7 @@
   gather_facts: yes
 
   vars:
-    register_api_url: "http://haproxy.upgrid.local:5000/register"
+    register_api_url: "http://haproxy.upgrid.local:5000/register/app"
 
   tasks:
 
@@ -59,6 +59,29 @@
         state: started
         enabled: yes
 
+    - name: Clonar PR privado automaticamente
+      git:
+        repo: "https://{{ github_token }}@github.com/UPGridTech/api_usuarios.git"
+        dest: "{{ app_path }}"
+        version: "qa"
+        update: yes
+        force: yes
+        
+    - name: Criar .env na VM
+      copy:
+        dest: "{{ app_path }}/.env"
+        content: |
+          POSTGRES_USER={{ postgres_user }}
+          POSTGRES_PASSWORD={{ postgres_password }}
+          POSTGRES_DB={{ postgres_db }}
+          DATABASE_URL=cockroachdb://{{ postgres_user }}@haproxy.upgrid.local:26257/{{ postgres_db }}?sslmode=disable
+          SIGNOZ_OTLP_URL=https://ingest.us.signoz.cloud:4317
+          SIGNOZ_KEY2={{ signoz_Key }}
+    - name: Docker compose Deploy app
+      command: docker compose up -d --build --no-deps app-service
+      args:
+        chdir: "{{ app_path }}"
+        
     - name: Registrar cliente na API
       uri:
         url: "{{ register_api_url }}"
@@ -88,26 +111,3 @@
       fail:
         msg: "Registro falhou: HTTP={{ register_response.status | default('no-status')}}"
       when: register_response.status not in [200,201,202,204]
-
-    - name: Clonar PR privado automaticamente
-      git:
-        repo: "https://{{ github_token }}@github.com/UPGridTech/api_usuarios.git"
-        dest: "{{ app_path }}"
-        version: "{{ pr_branch }}"
-        update: yes
-        force: yes
-        
-    - name: Criar .env na VM
-      copy:
-        dest: "{{ app_path }}/.env"
-        content: |
-          POSTGRES_USER={{ postgres_user }}
-          POSTGRES_PASSWORD={{ postgres_password }}
-          POSTGRES_DB={{ postgres_db }}
-          DATABASE_URL=postgresql://{{ postgres_user }}:{{ postgres_password }}@db:5432/{{ postgres_db }}
-          SIGNOZ_OTLP_URL=https://ingest.us.signoz.cloud:4317
-          SIGNOZ_KEY2={{ signoz_Key }}
-    - name: Docker compose Deploy app
-      command: docker compose up -d --build
-      args:
-        chdir: "{{ app_path }}"
