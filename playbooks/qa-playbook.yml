@@ -74,7 +74,7 @@
           POSTGRES_USER={{ postgres_user }}
           POSTGRES_PASSWORD={{ postgres_password }}
           POSTGRES_DB={{ postgres_db }}
-          DATABASE_URL=postgresql://{{ postgres_user }}@haproxy.upgrid.local:26257/{{ postgres_db }}?sslmode=disable
+          DATABASE_URL=cockroachdb://{{ postgres_user }}@haproxy.upgrid.local:26257/{{ postgres_db }}?sslmode=disable
           SIGNOZ_OTLP_URL=https://ingest.us.signoz.cloud:4317
           SIGNOZ_KEY2={{ signoz_Key }}
     - name: Docker compose Deploy app
