@@ -2,10 +2,10 @@
 name: CI/CD da Aplicação para ECS/EC2
 
 on:
-  push:
+  pull_request:
     branches:
-      - prod # Roda quando houver push na branch 'main'
-
+      - prod
+    types: [opened, synchronize, reopened, closed]
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
   ECR_REPOSITORY: webapp-repo # Nome do seu repositório ECR
