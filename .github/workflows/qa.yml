@@ -9,6 +9,8 @@ on:
 jobs:
   autoscaling:
     runs-on: self-hosted
+    env:
+      PR_WS: ${{ (github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number)) || 'manual-dispatch' }}
 
     steps:
       - name: Checkout código
@@ -27,7 +29,7 @@ jobs:
         run: |
           terraform init -reconfigure -input=false \
             -backend-config="bucket=bkt-senai-02" \
-            -backend-config="key=autoscaling/${{ github.event.inputs.vm_name }}/terraform.tfstate" \
+            -backend-config="key=${{ env.PR_WS }}/terraform.tfstate" \
             -backend-config="region=us-east-1" \
             -backend-config="dynamodb_table=bkt-state-upgrid-tech-lock" \
             -backend-config="encrypt=true"
