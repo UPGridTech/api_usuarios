@@ -1,13 +1,14 @@
 Flask==2.3.3
-SQLAlchemy==2.0.22
+SQLAlchemy==1.4.49       # <- compatível com cockroachdb
 psycopg2-binary==2.9.9
+cockroachdb==0.3.5       # <- lib oficial
 Werkzeug==2.3.7
 Flask-Cors==3.0.10
-
+flask_sqlalchemy
 opentelemetry-api==1.29.0
 opentelemetry-sdk==1.29.0
 opentelemetry-exporter-otlp==1.29.0
-
+sqlalchemy-cockroachdb
 opentelemetry-instrumentation-flask==0.50b0
 opentelemetry-instrumentation-sqlalchemy==0.50b0
 
