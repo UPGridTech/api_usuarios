@@ -56,28 +56,16 @@ jobs:
           github.event.action != 'closed' && 
           github.event.inputs.action != 'destroy'
         working-directory: terraform
-        run: |
-          # 1. Determinar o valor da variável vm_count:
-          #    - Se for dispatch E action='set', usa o valor de 'count'.
-          #    - Caso contrário, usa o valor padrão '1' (para PR open/sync).
-          VM_COUNT_VAR="vm_count=1"
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.action }}" == "set" ]]; then
-            VM_COUNT_VAR="vm_count=${{ github.event.inputs.count }}"
-            echo "Aplicando contagem de VMs: ${{ github.event.inputs.count }}"
-          else
-             echo "Aplicando contagem de VMs padrão: 1 (PR Lifecycle)"
-          fi
-
-          terraform apply -var "$VM_COUNT_VAR" -auto-approve
-          
-          # A linha abaixo foi removida. Não é recomendado puxar o state para um diretório local.
-          # terraform state pull > /home/felipe/state/${PR_WS}.tfstate 
+        run:        
+          terraform apply \
+          -var "vm_name=${{ github.event.pull_request.head.ref }}" \
+          -auto-approve
 
       - name: Terraform Destroy (on PR closed ou Dispatch 'destroy')
         if: github.event.action == 'closed' || github.event.inputs.action == 'destroy'
         working-directory: terraform
         run: |
-          terraform destroy -var "vm_count=0" -auto-approve # vm_count=0 é uma prática segura para destroy
+          terraform destroy -var "vm_name=${{ github.event.pull_request.head.ref }}" -auto-approve
 
       - name: Obter todos os IPs das VMs
         id: vm_ips
