@@ -66,7 +66,7 @@ jobs:
       id: render-task
       uses: aws-actions/amazon-ecs-render-task-definition@v1
       with:
-        task-definition: task-definition.json # Arquivo modelo que você criará
+        task-definition: task-definiton.json # Arquivo modelo que você criará
         container-name: webapp-ctr          # Nome do container (deve bater com 'ecs-service.tf')
         image: ${{ steps.build-image.outputs.latest_image }} # Nova imagem
 
