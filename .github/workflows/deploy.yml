@@ -39,21 +39,18 @@ jobs:
     # 2. Faz o build e tag para push
 
     - name: Construir, Taggear e Mapear Imagem
-          id: build-image
-          env:
-            ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-            IMAGE_TAG: ${{ github.sha }}
-          run: |
-            # Usa -f para apontar o Dockerfile dentro de ./docker
-            # O ponto final (.) define o contexto de build como a RAIZ do repositório.
-            docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f ./docker/Dockerfile .
-            
-            # Cria a tag 'latest'
-            docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
-            
-            # Define as variáveis de saída
-            echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
-            echo "latest_image=$ECR_REGISTRY/$ECR_REPOSITORY:latest" >> $GITHUB_OUTPUT
+      id: build-image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |            # Usa -f para apontar o Dockerfile dentro de ./docker
+        # O ponto final (.) define o contexto de build como a RAIZ do repositório.
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f ./docker/Dockerfile .    
+        # Cria a tag 'latest'
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest          
+        # Define as variáveis de saída
+        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        echo "latest_image=$ECR_REGISTRY/$ECR_REPOSITORY:latest" >> $GITHUB_OUTPUT
 
     # 4. Docker Push (Envia a imagem para o ECR)
     - name: Push da Imagem para o Amazon ECR
