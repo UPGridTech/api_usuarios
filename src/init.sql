@@ -1,4 +1,6 @@
--- Tabela de categorias
+-- ---------------------------
+-- TABELA DE CATEGORIAS
+-- ---------------------------
 CREATE TABLE IF NOT EXISTS categorias (
     id SERIAL PRIMARY KEY,
     nome VARCHAR(100) UNIQUE NOT NULL
@@ -12,12 +14,14 @@ VALUES
 ('Higiene')
 ON CONFLICT (nome) DO NOTHING;
 
--- Tabela de produtos
+-- ---------------------------
+-- TABELA DE PRODUTOS
+-- ---------------------------
 CREATE TABLE IF NOT EXISTS produtos (
     id SERIAL PRIMARY KEY,
-    nome VARCHAR(150) NOT NULL,
+    nome VARCHAR(150) UNIQUE NOT NULL,
     preco NUMERIC(10,2) NOT NULL,
-    categoria_id INT REFERENCES categorias(id),
+    categoria_id INT REFERENCES categorias(id) ON DELETE SET NULL,
     estoque INT DEFAULT 0
 );
 

@@ -1,16 +1,10 @@
-name: Autoscaling Runner
+name: QA Init Cluster
 
 on:
-  workflow_dispatch:
-    inputs:
-      action:
-        description: 'Ação: up | destroy'
-        required: true
-        type: string
-      vm_name:
-        description: 'Nome da VM (usado no caminho do tfstate)'
-        required: true
-        type: string
+ pull_request:
+    branches:
+      - dev
+    types: [opened, synchronize, reopened, closed]
 
 jobs:
   autoscaling:
