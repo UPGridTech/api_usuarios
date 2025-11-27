@@ -1,3 +1,4 @@
+root@debian:/home/felipe/src/src# cat app.py
 import os
 import time
 import logging
@@ -20,16 +21,13 @@ from werkzeug.middleware.dispatcher import DispatcherMiddleware
 
 # ------------------- CONFIG --------------------------
 PORT = int(os.getenv("PORT", 5000))
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "cockroachdb://admin@172.16.58.22:26257/meu_banco?sslmode=disable"
-)
+DATABASE_URL = os.getenv("DATABASE_URL") or "cockroachdb://admin@haproxy.upgrid.local:26257/meu_banco?sslmode=disable"
 SIGNOZ_KEY = os.getenv("SIGNOZ_KEY2")
 SIGNOZ_HTTP_ENDPOINT = "https://ingest.us.signoz.cloud:443/v1/traces"
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 
-# ------------------- ENGINE --------------------------
+# ------------------- SQLALCHEMY ----------------------
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = scoped_session(sessionmaker(bind=engine))
 Base = declarative_base()
@@ -81,8 +79,8 @@ def wait_for_db(retries=20):
                 conn.execute(text("SELECT 1"))
             logger.info("Banco disponível")
             return True
-        except Exception:
-            logger.info("DB não pronto, tentando novamente...")
+        except Exception as e:
+            logger.info(f"DB não pronto, tentando novamente... {e}")
             time.sleep(2)
     return False
 
@@ -97,6 +95,7 @@ otlp_exporter = OTLPSpanExporter(
 )
 span_processor = BatchSpanProcessor(otlp_exporter)
 trace.get_tracer_provider().add_span_processor(span_processor)
+
 FlaskInstrumentor().instrument_app(app)
 SQLAlchemyInstrumentor().instrument(engine=engine)
 
@@ -130,7 +129,7 @@ def create_produto():
         return jsonify(produto_to_dict(p)), 201
     except Exception as e:
         session.rollback()
-        logger.error(f"Erro criar produto: {str(e)}")
+        logger.error(f"Erro criar produto: {e}")
         return jsonify({"error": "erro ao criar"}), 500
     finally:
         session.close()
@@ -153,7 +152,7 @@ def update_produto(produto_id):
         return jsonify(produto_to_dict(p))
     except Exception as e:
         session.rollback()
-        logger.error(f"Erro atualizar produto: {str(e)}")
+        logger.error(f"Erro atualizar produto: {e}")
         return jsonify({"error": "erro ao atualizar"}), 500
     finally:
         session.close()
@@ -172,7 +171,7 @@ def delete_produto(produto_id):
         return jsonify({"ok": True})
     except Exception as e:
         session.rollback()
-        logger.error(f"Erro deletar produto: {str(e)}")
+        logger.error(f"Erro deletar produto: {e}")
         return jsonify({"error": "erro ao deletar"}), 500
     finally:
         session.close()
