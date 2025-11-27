@@ -4,7 +4,7 @@ psycopg2-binary==2.9.9
 cockroachdb==0.3.5       # <- lib oficial
 Werkzeug==2.3.7
 Flask-Cors==3.0.10
-
+flask_sqlalchemy
 opentelemetry-api==1.29.0
 opentelemetry-sdk==1.29.0
 opentelemetry-exporter-otlp==1.29.0
