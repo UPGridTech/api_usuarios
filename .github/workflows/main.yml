@@ -67,15 +67,14 @@ jobs:
         run: |
           terraform destroy -var "vm_name=${{ github.event.pull_request.head.ref }}" -auto-approve
 
-      - name: Obter todos os IPs das VMs
-        id: vm_ips
+      - name: Obter IP da VM criada
+        id: vm_ip
         working-directory: terraform
-        # Este passo só faz sentido se o ambiente foi criado/modificado (não em destroy/close)
-        if: github.event.action != 'closed' && github.event.inputs.action != 'destroy'
+        if: github.event.inputs.action == 'up'
         run: |
-          VM_IPS=$(terraform output -json vm_ip | jq -r '.[]')
-          echo "VM_IPS=$VM_IPS" >> $GITHUB_ENV
-          echo "IPs das VMs: $VM_IPS"
+          VM_IP=$(terraform output -json vm_ip | jq -r '.')
+          echo "VM_IP=$VM_IP" >> $GITHUB_ENV
+          echo "IP da VM: $VM_IP"
 
       - name: Run Ansible on each VM
         # Executa somente se o ambiente foi aplicado (não em destroy/close)
