@@ -1,7 +1,11 @@
 ---
-- name: Configurar Cliente Local (Docker + Registro na API)
+- name: Configurar Cliente Local + Monitoramento SigNoz
   hosts: all
   gather_facts: yes
+  become: yes
+
+  vars:
+    otel_collector_version: "0.110.0"
 
   tasks:
 
@@ -63,7 +67,7 @@
         version: "{{ pr_branch | default('main') }}"
         update: yes
         force: yes
-        
+
     - name: Criar .env na VM
       copy:
         dest: "{{ app_path }}/.env"
@@ -74,7 +78,87 @@
           DATABASE_URL=postgresql://{{ postgres_user }}:{{ postgres_password }}@db:5432/{{ postgres_db }}
           SIGNOZ_OTLP_URL=https://ingest.us.signoz.cloud:4317
           SIGNOZ_KEY2={{ signoz_Key }}
+
     - name: Docker compose Deploy app
       command: docker compose up -d --build
       args:
         chdir: "{{ app_path }}"
+
+    - name: Baixar pacote do OpenTelemetry Collector
+      get_url:
+        url: "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v{{ otel_collector_version }}/otelcol-contrib_{{ otel_collector_version }}_linux_amd64.deb"
+        dest: "/tmp/otelcol.deb"
+      when: ansible_os_family == "Debian"
+
+    - name: Instalar OTEL Collector (Debian)
+      apt:
+        deb: /tmp/otelcol.deb
+      when: ansible_os_family == "Debian"
+
+    - name: Criar configuração do OTEL Collector para SigNoz Cloud
+      copy:
+        dest: /etc/otelcol-contrib/config.yaml
+        owner: root
+        group: root
+        mode: 0644
+        content: |
+          receivers:
+            hostmetrics:
+              collection_interval: 30s
+              scrapers:
+                cpu: {}
+                load: {}
+                memory: {}
+                disk: {}
+                filesystem: {}
+                network: {}
+            otlp:
+              protocols:
+                grpc:
+                http:
+
+          processors:
+            batch:
+            resource:
+              attributes:
+                - key: host.name
+                  value: "{{ ansible_hostname }}"
+                  action: upsert
+                - key: host.ip
+                  value: "{{ ansible_default_ipv4.address }}"
+                  action: insert
+                - key: instance_id
+                  value: "{{ inventory_hostname }}"
+                  action: insert
+                - key: environment
+                  value: "{{ environment | default('prod') }}"
+                  action: insert
+
+          exporters:
+            otlp:
+              endpoint: "{{ signoz_endpoint }}"
+              headers:
+                "signoz-access-token": "{{ signoz_api_key }}"
+              tls:
+                insecure: false
+
+          service:
+            pipelines:
+              metrics:
+                receivers: [hostmetrics]
+                processors: [resource, batch]
+                exporters: [otlp]
+              logs:
+                receivers: [otlp]
+                processors: [resource, batch]
+                exporters: [otlp]
+              traces:
+                receivers: [otlp]
+                processors: [resource, batch]
+                exporters: [otlp]
+
+    - name: Ativar e iniciar o OTEL Collector
+      systemd:
+        name: otelcol-contrib
+        enabled: yes
+        state: restarted
