@@ -6,6 +6,7 @@
 
   vars:
     otel_collector_version: "0.110.0"
+    signoz_endpoint: "https://ingest.us.signoz.cloud:443"
 
   tasks:
 
