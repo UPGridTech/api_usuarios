@@ -139,7 +139,7 @@
             otlp:
               endpoint: "{{ signoz_endpoint }}"
               headers:
-                "signoz-access-token": "{{ signoz_api_key }}"
+                "signoz-access-token": "{{ signoz_Key }}"
               tls:
                 insecure: false
 
