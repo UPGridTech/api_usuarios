@@ -57,10 +57,7 @@ jobs:
           github.event.inputs.action != 'destroy'
         working-directory: terraform
         run:        
-          terraform apply \
-          -var "vm_name=${{ github.event.pull_request.head.ref }}" \
-          -auto-approve
-
+          terraform apply -var "vm_name=${{ github.event.pull_request.head.ref }}" -auto-approve
       - name: Terraform Destroy (on PR closed ou Dispatch 'destroy')
         if: github.event.action == 'closed' || github.event.inputs.action == 'destroy'
         working-directory: terraform
