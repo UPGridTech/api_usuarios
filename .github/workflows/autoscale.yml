@@ -1,0 +1,75 @@
+name: Autoscaling Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Ação: up | destroy'
+        required: true
+        type: string
+      vm_name:
+        description: 'Nome da VM (usado no caminho do tfstate)'
+        required: true
+        type: string
+
+jobs:
+  autoscaling:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_TOKEN_KEY }}
+          aws-region: us-east-1
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: |
+          terraform init -reconfigure -input=false \
+            -backend-config="bucket=bkt-senai-02" \
+            -backend-config="key=autoscaling/${{ github.event.inputs.vm_name }}/terraform.tfstate" \
+            -backend-config="region=us-east-1" \
+            -backend-config="dynamodb_table=bkt-state-upgrid-tech-lock" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform Apply (action = up)
+        if: github.event.inputs.action == 'up'
+        working-directory: terraform
+        run: |
+          terraform apply \
+            -var "vm_name=${{ github.event.inputs.vm_name }}" \
+            -auto-approve
+
+      - name: Terraform Destroy (action = destroy)
+        if: github.event.inputs.action == 'destroy'
+        working-directory: terraform
+        run: |
+          terraform destroy \
+            -var "vm_name=${{ github.event.inputs.vm_name }}" \
+            -auto-approve
+
+      - name: Obter IP da VM criada
+        id: vm_ip
+        working-directory: terraform
+        if: github.event.inputs.action == 'up'
+        run: |
+          VM_IP=$(terraform output -json vm_ip | jq -r '.')
+          echo "VM_IP=$VM_IP" >> $GITHUB_ENV
+          echo "IP da VM: $VM_IP"
+
+      - name: Run Ansible
+        if: github.event.inputs.action == 'up'
+        run: |
+          echo "=== Running Ansible on $VM_IP ==="
+          ansible-playbook playbooks/qa-playbook.yml \
+            -i "${VM_IP}," \
+            -u "${{ secrets.ANSIBLE_USER }}" \
+            --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} vm_name=${{ github.event.inputs.vm_name }} github_token=${{ secrets.GITHUB_PAT }} postgres_user=${{ secrets.POSTGRES_USER }} postgres_password=${{ secrets.POSTGRES_PASSWORD }} postgres_db=${{ secrets.POSTGRES_DB }} ansible_ip=${VM_IP} app_path=/home/felipe/src/ signoz_Key=PF0rQtvZdo00lgWLndHcKih-g3eNNS1-Uz5k" \
+            --ssh-common-args='-o StrictHostKeyChecking=no' \
+            -vvv

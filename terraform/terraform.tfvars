@@ -1,0 +1,12 @@
+vsphere_user     = "administrator@upgrid.local"
+vsphere_password = "UpGr1d\"135"
+vsphere_server   = "vcenter.upgrid.local"
+vsphere_datacenter = "senai-dc"
+vsphere_datastore  = "datastore1"
+mgmt_lan           = "VM Network"
+disk_size          = 20
+num_cpu            = 2
+ram_memory         = 2048
+template_name = "template-01-oficial"
+vsphere_cluster_name = "ClusterQA"
+domain = "upgrid.local"

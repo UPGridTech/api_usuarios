@@ -1,0 +1,165 @@
+---
+- name: Configurar Cliente Local + Monitoramento SigNoz
+  hosts: all
+  gather_facts: yes
+  become: yes
+
+  vars:
+    otel_collector_version: "0.110.0"
+    signoz_endpoint: "https://ingest.us.signoz.cloud:443"
+
+  tasks:
+
+    - name: Atualizar cache de pacotes
+      apt:
+        update_cache: yes
+
+    - name: Atualizar todos os pacotes do sistema
+      apt:
+        upgrade: dist
+
+    - name: Instalar Git
+      apt:
+        name: git
+        state: present
+
+    - name: Instalar pré-requisitos do Docker
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+
+    - name: Adicionar chave GPG do Docker
+      get_url:
+        url: https://download.docker.com/linux/debian/gpg
+        dest: /usr/share/keyrings/docker-archive-keyring.gpg
+        mode: '0644'
+
+    - name: Adicionar repositório Docker
+      apt_repository:
+        repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable"
+        state: present
+        filename: docker
+
+    - name: Instalar Docker
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Garantir que Docker esteja ativo
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Clonar PR privado automaticamente
+      git:
+        repo: "https://{{ github_token }}@github.com/UPGridTech/api_usuarios.git"
+        dest: "{{ app_path }}"
+        version: "{{ pr_branch | default('main') }}"
+        update: yes
+        force: yes
+
+    - name: Criar .env na VM
+      copy:
+        dest: "{{ app_path }}/.env"
+        content: |
+          POSTGRES_USER={{ postgres_user }}
+          POSTGRES_PASSWORD={{ postgres_password }}
+          POSTGRES_DB={{ postgres_db }}
+          DATABASE_URL=postgresql://{{ postgres_user }}:{{ postgres_password }}@db:5432/{{ postgres_db }}
+          SIGNOZ_OTLP_URL=https://ingest.us.signoz.cloud:4317
+          SIGNOZ_KEY2={{ signoz_Key }}
+
+    - name: Docker compose Deploy app
+      command: docker compose up -d --build
+      args:
+        chdir: "{{ app_path }}"
+
+    - name: Baixar pacote do OpenTelemetry Collector
+      get_url:
+        url: "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v{{ otel_collector_version }}/otelcol-contrib_{{ otel_collector_version }}_linux_amd64.deb"
+        dest: "/tmp/otelcol.deb"
+      when: ansible_os_family == "Debian"
+
+    - name: Instalar OTEL Collector (Debian)
+      apt:
+        deb: /tmp/otelcol.deb
+      when: ansible_os_family == "Debian"
+
+    - name: Criar configuração do OTEL Collector para SigNoz Cloud
+      copy:
+        dest: /etc/otelcol-contrib/config.yaml
+        owner: root
+        group: root
+        mode: 0644
+        content: |
+          receivers:
+            hostmetrics:
+              collection_interval: 30s
+              scrapers:
+                cpu: {}
+                load: {}
+                memory: {}
+                disk: {}
+                filesystem: {}
+                network: {}
+            otlp:
+              protocols:
+                grpc:
+                http:
+
+          processors:
+            batch:
+            resource:
+              attributes:
+                - key: host.name
+                  value: "{{ ansible_hostname }}"
+                  action: upsert
+                - key: host.ip
+                  value: "{{ ansible_default_ipv4.address }}"
+                  action: insert
+                - key: instance_id
+                  value: "{{ inventory_hostname }}"
+                  action: insert
+                - key: environment
+                  value: "{{ environment | default('prod') }}"
+                  action: insert
+
+          exporters:
+            otlp:
+              endpoint: "{{ signoz_endpoint }}"
+              headers:
+                "signoz-access-token": "{{ signoz_Key }}"
+              tls:
+                insecure: false
+
+          service:
+            pipelines:
+              metrics:
+                receivers: [hostmetrics]
+                processors: [resource, batch]
+                exporters: [otlp]
+              logs:
+                receivers: [otlp]
+                processors: [resource, batch]
+                exporters: [otlp]
+              traces:
+                receivers: [otlp]
+                processors: [resource, batch]
+                exporters: [otlp]
+
+    - name: Ativar e iniciar o OTEL Collector
+      systemd:
+        name: otelcol-contrib
+        enabled: yes
+        state: restarted
