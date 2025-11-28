@@ -8,7 +8,7 @@ flask_sqlalchemy
 opentelemetry-api==1.29.0
 opentelemetry-sdk==1.29.0
 opentelemetry-exporter-otlp==1.29.0
-
+sqlalchemy-cockroachdb
 opentelemetry-instrumentation-flask==0.50b0
 opentelemetry-instrumentation-sqlalchemy==0.50b0
 
