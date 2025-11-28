@@ -1,0 +1,70 @@
+name: QA Init Cluster
+
+on:
+ pull_request:
+    branches:
+      - qa
+    types: [opened, synchronize, reopened, closed]
+
+jobs:
+  autoscaling:
+    runs-on: self-hosted
+    env:
+      PR_WS: ${{ (github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number)) || 'manual-dispatch' }}
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_TOKEN_KEY }}
+          aws-region: us-east-1
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: |
+          terraform init -reconfigure -input=false \
+            -backend-config="bucket=bkt-senai-02" \
+            -backend-config="key=${{ env.PR_WS }}/terraform.tfstate" \
+            -backend-config="region=us-east-1" \
+            -backend-config="dynamodb_table=bkt-state-upgrid-tech-lock" \
+            -backend-config="encrypt=true"
+            
+      - name: Terraform Apply (PR Open/Sync ou Dispatch 'set')
+        # Este passo é executado se NÃO for um evento 'closed' (PR) E se NÃO for um 'destroy' manual.
+        if: |
+          github.event.action != 'closed' && 
+          github.event.inputs.action != 'destroy'
+        working-directory: terraform
+        run: 
+          terraform apply -var "vm_name=${{ github.event.pull_request.head.ref }}" -auto-approve
+          
+      - name: Terraform Destroy (on PR closed ou Dispatch 'destroy')
+        if: github.event.action == 'closed' || github.event.inputs.action == 'destroy'
+        working-directory: terraform
+        run: |
+          terraform destroy -var "vm_name=${{ github.event.pull_request.head.ref }}" -auto-approve
+
+
+      - name: Obter IP da VM criada
+        id: vm_ip
+        working-directory: terraform
+        run: |
+          VM_IP=$(terraform output -json vm_ip | jq -r '.')
+          echo "VM_IP=$VM_IP" >> $GITHUB_ENV
+          echo "IP da VM: $VM_IP"
+
+      - name: Run Ansible
+        if: github.event.action != 'closed' && github.event.inputs.action != 'destroy'
+        run: |
+          echo "=== Running Ansible on $VM_IP ==="
+          ansible-playbook playbooks/qa-playbook.yml \
+            -i "${VM_IP}," \
+            -u "${{ secrets.ANSIBLE_USER }}" \
+            --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} pr_branch=${{ github.event.pull_request.head.ref }} vm_name=${{ github.event.inputs.vm_name }} github_token=${{ secrets.GITHUB_PAT }} postgres_user=${{ secrets.POSTGRES_USER }} postgres_password=${{ secrets.POSTGRES_PASSWORD }} postgres_db=${{ secrets.POSTGRES_DB }} ansible_ip=${VM_IP} app_path=/home/felipe/src/ signoz_Key=PF0rQtvZdo00lgWLndHcKih-g3eNNS1-Uz5k" \
+            --ssh-common-args='-o StrictHostKeyChecking=no' \
+            -vvv
