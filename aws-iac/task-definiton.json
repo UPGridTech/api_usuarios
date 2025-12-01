@@ -52,7 +52,7 @@
         },
         {
           "name": "SQLALCHEMY_DATABASE_URI",
-          "value": "cockroachdb://admin@10.0.3.120:26257/defaultdb?sslmode=disable"
+          "value": "cockroachdb://admin@10.0.1.20:26257/defaultdb?sslmode=disable"
         }
       ]
     }
