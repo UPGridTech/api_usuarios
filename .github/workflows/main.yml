@@ -1,33 +1,88 @@
 name: Build e Teste na PR para Dev
 
+# O trigger 'workflow_dispatch' agora aceita entradas (inputs)
 on:
   pull_request:
     branches:
       - dev
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Ação de escalabilidade (set, up, down, auto). Relevante apenas para dispatch manual.'
+        required: false
+      count:
+        description: 'Contagem exata de réplicas. Usado se action for "set".'
+        required: false
 
 jobs:
   build-and-run:
     runs-on: self-hosted
+    
+    # Define variáveis para o ambiente, garantindo que 'PR_WORKSPACE' seja usado corretamente,
+    # mesmo quando o evento não é uma pull_request (como no workflow_dispatch)
+    env:
+      # Use o número da PR para o workspace se for uma PR, caso contrário, use um nome padrão.
+      PR_WS: ${{ (github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number)) || 'manual-dispatch' }}
+
     steps:
-      - name: Checkout código da PR
+      - name: Checkout código
         uses: actions/checkout@v4
-      - name: Deploy VM Terraform
+
+      # Não é necessário setar PR_WORKSPACE separadamente, pois usamos a variável de ambiente PR_WS acima.
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_TOKEN_KEY }}
+          aws-region: us-east-1
+
+      - name: Terraform Init + Select Workspace
+        working-directory: terraform
         run: |
-          terraform init
-          terrafom apply -v "vm_count=1" --auto-aprove
-      - name: Get VM IP
-        id: vm
+          # O key agora usa a variável PR_WS que é definida no nível 'env'
+          terraform init -reconfigure -input=false \
+            -backend-config="bucket=s3-bkt-s3nai" \
+            -backend-config="key=${{ env.PR_WS }}/terraform.tfstate" \
+            -backend-config="region=us-east-1" \
+            -backend-config="dynamodb_table=s3-bkt-s3nai-lock" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform Apply (PR Open/Sync ou Dispatch 'set')
+        # Este passo é executado se NÃO for um evento 'closed' (PR) E se NÃO for um 'destroy' manual.
+        if: |
+          github.event.action != 'closed' && 
+          github.event.inputs.action != 'destroy'
+        working-directory: terraform
+        run:        
+          terraform apply -var "vm_name=${{ github.event.pull_request.head.ref }}" -auto-approve
+      - name: Terraform Destroy (on PR closed ou Dispatch 'destroy')
+        if: github.event.action == 'closed' || github.event.inputs.action == 'destroy'
+        working-directory: terraform
         run: |
-          VM_IP=$(terraform output -raw vm_ip)
-          echo "VM_IP=$VM_IP" >> $GITHUB_ENV
-      - name: Run Ansible Playbook
+          terraform destroy -var "vm_name=${{ github.event.pull_request.head.ref }}" -auto-approve
+
+      - name: Obter todos os IPs das VMs
+        id: vm_ips
+        working-directory: terraform
+        if: github.event.action != 'closed' && github.event.inputs.action != 'destroy'
         run: |
-          ansible-playbook playbooks/setup_vm.yml \
-            -i "$VM_IP," \
-            --extra-vars "ansible_user=adminsenai@134" \
-            --extra-vars "pr_branch=${{ github.head_ref }}"
-      - name: Healthcheck
+          VM_IPS=$(terraform output -raw vm_ip)
+          echo "VM_IPS=$VM_IPS" >> $GITHUB_ENV
+          echo "IPs das VMs: $VM_IPS"
+
+      - name: Run Ansible on each VM
+        # Executa somente se o ambiente foi aplicado (não em destroy/close)
+        if: github.event.action != 'closed' && github.event.inputs.action != 'destroy'
         run: |
-          curl -f http://$VM_IP/healthz
-        
+          for IP in $VM_IPS; do
+            echo "=== Running Ansible on $IP ==="
+            ansible-playbook playbooks/dev-playbook.yml \
+              -i "${IP}," \
+              -u "${{ secrets.ANSIBLE_USER }}" \
+              --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} pr_branch=${{ github.event.pull_request.head.ref }} pr_number=${{ github.event.pull_request.number }} github_token=${{ secrets.GITHUB_PAT }} postgres_user=${{ secrets.POSTGRES_USER }} postgres_password=${{ secrets.POSTGRES_PASSWORD }} postgres_db=${{ secrets.POSTGRES_DB }} signoz_Key="PF0rQtvZdo00lgWLndHcKih-g3eNNS1-Uz5k" app_path=/home/felipe/repo" \
+              --ssh-common-args='-o StrictHostKeyChecking=no' \
+              -vvv
+          done

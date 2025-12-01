@@ -1,0 +1,6 @@
+[
+    {
+        "capacityProvider": "FARGATE",
+        "weight": 1
+    }
+]
