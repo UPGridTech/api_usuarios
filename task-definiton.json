@@ -3,7 +3,7 @@
   "requiresCompatibilities": [
     "EC2"
   ],
-  "executionRoleArn": "arn:aws:iam::781581113404:role/LabRole",
+  "executionRoleArn": "arn:aws:iam::538368656684:role/LabRole",
   "cpu": "1024",
   "memory": "512",
   "networkMode": "awsvpc", 
@@ -48,7 +48,7 @@
         },
         {
           "name": "DATABASE_URL",
-          "value": "cockroachdb://admin@10.0.1.20:26257/defaultdb?sslmode=disable"
+          "value": "cockroachdb://admin@10.0.3.120:26257/defaultdb?sslmode=disable"
         },
         {
           "name": "SQLALCHEMY_DATABASE_URI",
