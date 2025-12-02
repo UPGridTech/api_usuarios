@@ -12,7 +12,7 @@
     cockroach_version: "v25.3.2"
     cockroach_tgz: "/tmp/cockroach.tgz"
     cockroach_extract_dir: "/tmp/cockroach-{{ cockroach_version }}.linux-amd64"
-    cluster_join_addr: "172.16.58.23:26257"
+    cluster_join_addr: "172.16.58.95:26257"
 
   tasks:
 
