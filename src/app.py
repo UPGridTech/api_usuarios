@@ -15,7 +15,7 @@ from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-# *** IMPORTANTE: HTTP exporter correto ***
+# HTTP exporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
@@ -30,9 +30,11 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
+# SigNoz configuration
 SIGNOZ_KEY = os.getenv("SIGNOZ_KEY2")
+SERVICE_NAME_ENV = os.getenv("SERVICE_NAME", "supermercado-app")
 
-# Endpoint **HTTP** obrigatório
+# Endpoint HTTP obrigatório
 SIGNOZ_HTTP_ENDPOINT = "https://ingest.us.signoz.cloud:443/v1/traces"
 
 # ---------------------------
@@ -52,12 +54,11 @@ logger.addHandler(handler)
 # ---------------------------
 # OpenTelemetry - TRACE
 # ---------------------------
-resource = Resource.create({SERVICE_NAME: "supermercado-app"})
+resource = Resource.create({SERVICE_NAME: SERVICE_NAME_ENV})
 
 trace.set_tracer_provider(TracerProvider(resource=resource))
 tracer_provider = trace.get_tracer_provider()
 
-# Exporter correto (HTTP)
 otlp_exporter = OTLPSpanExporter(
     endpoint=SIGNOZ_HTTP_ENDPOINT,
     headers={
@@ -65,7 +66,6 @@ otlp_exporter = OTLPSpanExporter(
     }
 )
 
-# Processador assíncrono
 tracer_provider.add_span_processor(
     BatchSpanProcessor(otlp_exporter)
 )
@@ -184,9 +184,8 @@ if __name__ == "__main__":
     with app.app_context():
         db.create_all()
 
-        # Instrumentação OTel
         FlaskInstrumentor().instrument_app(app)
         SQLAlchemyInstrumentor().instrument(engine=db.engine)
 
-    logger.info("Servidor iniciado com OTel + SigNoz HTTP exporter")
+    logger.info(f"Servidor iniciado com OTel + SigNoz — service_name={SERVICE_NAME_ENV}")
     app.run(host="0.0.0.0", port=80)
