@@ -44,7 +44,7 @@ jobs:
         run: |
           # O key agora usa a variável PR_WS que é definida no nível 'env'
           terraform init -reconfigure -input=false \
-            -backend-config="bucket=s3-bkt-s3nai" \
+            -backend-config="bucket=s3-bkt-senai-3" \
             -backend-config="key=${{ env.PR_WS }}/terraform.tfstate" \
             -backend-config="region=us-east-1" \
             -backend-config="dynamodb_table=s3-bkt-s3nai-lock" \
