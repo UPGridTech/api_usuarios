@@ -51,10 +51,11 @@ resource = Resource.create({SERVICE_NAME: "supermercado-app"})
 trace.set_tracer_provider(TracerProvider(resource=resource))
 tracer_provider = trace.get_tracer_provider()
 
+# Cabeçalho como dicionário, não tupla
 otlp_exporter = OTLPSpanExporter(
     endpoint=SIGNOZ_OTLP_URL,
     insecure=False,
-    headers=(("x-signoz-ingest-key", SIGNOZ_INGEST_KEY),)
+    headers={"x-signoz-ingest-key": SIGNOZ_INGEST_KEY}
 )
 tracer_provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
 
