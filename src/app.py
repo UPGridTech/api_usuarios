@@ -27,7 +27,7 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
-SIGNOZ_OTLP_URL = os.getenv("SIGNOZ_OTLP_URL")
+SIGNOZ_OTLP_URL = os.getenv("SIGNOZ_OTLP_URL")  # ex: https://ingest.us.signoz.cloud:443
 SIGNOZ_INGEST_KEY = os.getenv("SIGNOZ_KEY2")
 
 # ---------------------------
@@ -48,15 +48,22 @@ logger.addHandler(handler)
 # OpenTelemetry - TRACE
 # ---------------------------
 resource = Resource.create({SERVICE_NAME: "supermercado-app"})
-trace.set_tracer_provider(TracerProvider(resource=resource))
+
+trace.set_tracer_provider(
+    TracerProvider(
+        resource=resource
+    )
+)
+
 tracer_provider = trace.get_tracer_provider()
 
-# Cabeçalho como dicionário, não tupla
+# ❗ FORMATO CERTO DOS HEADERS
 otlp_exporter = OTLPSpanExporter(
     endpoint=SIGNOZ_OTLP_URL,
     insecure=False,
-    headers={"x-signoz-ingest-key": SIGNOZ_INGEST_KEY}
+    headers=(f"signoz-ingest-key={SIGNOZ_INGEST_KEY}",)
 )
+
 tracer_provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
 
 # ---------------------------
@@ -171,9 +178,9 @@ app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {
 # ---------------------------
 if __name__ == "__main__":
     with app.app_context():
-        # Cria tabelas
         db.create_all()
-        # Instrumenta Flask e SQLAlchemy dentro do app context
+
+        # Instrumentação OTel (CORRETA)
         FlaskInstrumentor().instrument_app(app)
         SQLAlchemyInstrumentor().instrument(engine=db.engine)
 
