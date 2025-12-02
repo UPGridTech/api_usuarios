@@ -2,10 +2,9 @@
 name: CI/CD da Aplicação para ECS/EC2
 
 on:
-  pull_request:
+  push:
     branches:
       - prod
-    types: [opened, synchronize, reopened, closed]
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
