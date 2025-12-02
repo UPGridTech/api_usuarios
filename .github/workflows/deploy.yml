@@ -6,12 +6,13 @@ on:
     branches:
       - prod
     types: [opened, synchronize, reopened, closed]
+
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
-  ECR_REPOSITORY: webapp-repo # Nome do seu repositório ECR
-  ECS_CLUSTER: ecs-cluster     # Nome do seu cluster ECS
-  ECS_SERVICE: webapp-svc      # Nome do seu serviço ECS
-  ECS_TASK_DEFINITION_FAMILY: webapp # Nome da família da Task Definition
+  ECR_REPOSITORY: webapp-repo
+  ECS_CLUSTER: ecs-cluster
+  ECS_SERVICE: webapp-svc
+  ECS_TASK_DEFINITION_FAMILY: webapp
 
 jobs:
   deploy:
@@ -19,62 +20,59 @@ jobs:
     runs-on: self-hosted
     
     steps:
-    - name: Checkout do Código
-      uses: actions/checkout@v4
+      - name: Checkout do Código
+        uses: actions/checkout@v4
 
-    # 1. Configura as Credenciais AWS
-    - name: Configurar Credenciais AWS
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-session-token: ${{ secrets.AWS_TOKEN_KEY }}
-        aws-region: us-east-1
+      # 1. Configura Credenciais AWS
+      - name: Configurar Credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_TOKEN_KEY }}
+          aws-region: us-east-1
 
-    # 2. Autentica o Docker no ECR (Docker Login)
-    - name: Login no Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v2
-  
-    # 2. Faz o build e tag para push
+      # 2. Login no ECR
+      - name: Login no Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-    - name: Construir, Taggear e Mapear Imagem
-      id: build-image
-      env:
-        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        IMAGE_TAG: ${{ github.sha }}
-      run: |            # Usa -f para apontar o Dockerfile dentro de ./docker
-        # O ponto final (.) define o contexto de build como a RAIZ do repositório.
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f ./docker/Dockerfile .    
-        # Cria a tag 'latest'
-        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest          
-        # Define as variáveis de saída
-        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
-        echo "latest_image=$ECR_REGISTRY/$ECR_REPOSITORY:latest" >> $GITHUB_OUTPUT
+      # 3. Build da Imagem
+      - name: Construir, Taggear e Mapear Imagem
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f ./docker/Dockerfile .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
-    # 4. Docker Push (Envia a imagem para o ECR)
-    - name: Push da Imagem para o Amazon ECR
-      env:
-        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        IMAGE_TAG: ${{ github.sha }}
-      run: |
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "latest_image=$ECR_REGISTRY/$ECR_REPOSITORY:latest" >> $GITHUB_OUTPUT
 
-    # 5. Cria um Novo Arquivo de Task Definition
-    - name: Renderizar Novo Task Definition
-      id: render-task
-      uses: aws-actions/amazon-ecs-render-task-definition@v1
-      with:
-        task-definition: task-definiton.json # Arquivo modelo que você criará
-        container-name: webapp-ctr          # Nome do container (deve bater com 'ecs-service.tf')
-        image: ${{ steps.build-image.outputs.latest_image }} # Nova imagem
+      # 4. Push da Imagem
+      - name: Push da Imagem para o Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
-    # 6. Atualiza o Serviço ECS
-    - name: Deploy da Nova Imagem no Serviço ECS
-      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-      with:
-        task-definition: ${{ steps.render-task.outputs.task-definition }}
-        service: ${{ env.ECS_SERVICE }}
-        cluster: ${{ env.ECS_CLUSTER }}
-        wait-for-service-stability: true
+      # 5. Renderizar Nova Task Definition
+      - name: Renderizar Novo Task Definition
+        id: render-task
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definiton.json
+          container-name: webapp-ctr
+          image: ${{ steps.build-image.outputs.image }}
+
+      # 6. Deploy no ECS
+      - name: Deploy da Nova Imagem no Serviço ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.render-task.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
