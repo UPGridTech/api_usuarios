@@ -44,10 +44,10 @@ jobs:
         run: |
           # O key agora usa a variável PR_WS que é definida no nível 'env'
           terraform init -reconfigure -input=false \
-            -backend-config="bucket=s3-bkt-s3nai" \
+            -backend-config="bucket=s3-bkt-senai-run" \
             -backend-config="key=${{ env.PR_WS }}/terraform.tfstate" \
             -backend-config="region=us-east-1" \
-            -backend-config="dynamodb_table=s3-bkt-s3nai-lock" \
+            -backend-config="dynamodb_table=s3-bkt-senai-run-lock" \
             -backend-config="encrypt=true"
 
       - name: Terraform Apply (PR Open/Sync ou Dispatch 'set')
@@ -82,7 +82,12 @@ jobs:
             ansible-playbook playbooks/dev-playbook.yml \
               -i "${IP}," \
               -u "${{ secrets.ANSIBLE_USER }}" \
-              --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} pr_branch=${{ github.event.pull_request.head.ref }} pr_number=${{ github.event.pull_request.number }} github_token=${{ secrets.GITHUB_PAT }} postgres_user=${{ secrets.POSTGRES_USER }} postgres_password=${{ secrets.POSTGRES_PASSWORD }} postgres_db=${{ secrets.POSTGRES_DB }} signoz_Key="PF0rQtvZdo00lgWLndHcKih-g3eNNS1-Uz5k" app_path=/home/felipe/src/" \
+              --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} pr_branch=${{ github.event.pull_request.head.ref }} pr_number=${{ github.event.pull_request.number }} github_token=${{ secrets.GITHUB_PAT }} postgres_user=${{ secrets.POSTGRES_USER }} postgres_password=${{ secrets.POSTGRES_PASSWORD }} postgres_db=${{ secrets.POSTGRES_DB }} signoz_Key="PF0rQtvZdo00lgWLndHcKih-g3eNNS1-Uz5k" app_path=/home/felipe/repo" \
               --ssh-common-args='-o StrictHostKeyChecking=no' \
               -vvv
           done
+          
+      - name: Exibir IPs no summary
+        run: |
+          echo "### IPs das VMs" >> $GITHUB_STEP_SUMMARY
+          echo "\`${VM_IPS}\`" >> $GITHUB_STEP_SUMMARY
