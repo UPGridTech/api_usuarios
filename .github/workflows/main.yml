@@ -86,3 +86,8 @@ jobs:
               --ssh-common-args='-o StrictHostKeyChecking=no' \
               -vvv
           done
+          
+      - name: Exibir IPs no summary
+        run: |
+          echo "### IPs das VMs" >> $GITHUB_STEP_SUMMARY
+          echo "\`${VM_IPS}\`" >> $GITHUB_STEP_SUMMARY
