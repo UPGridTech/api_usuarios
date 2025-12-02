@@ -28,7 +28,7 @@ jobs:
         working-directory: terraform
         run: |
           terraform init -reconfigure -input=false \
-            -backend-config="bucket=bkt-senai-02" \
+            -backend-config="bucket=s3-bkt-senai-3" \
             -backend-config="key=${{ env.PR_WS }}/terraform.tfstate" \
             -backend-config="region=us-east-1" \
             -backend-config="dynamodb_table=bkt-state-upgrid-tech-lock" \
