@@ -14,7 +14,10 @@ from opentelemetry import trace
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+
+# *** IMPORTANTE: HTTP exporter correto ***
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
@@ -27,8 +30,10 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
-SIGNOZ_OTLP_URL = os.getenv("SIGNOZ_OTLP_URL")  # ex: https://ingest.us.signoz.cloud:443
-SIGNOZ_INGEST_KEY = os.getenv("SIGNOZ_KEY2")
+SIGNOZ_KEY = os.getenv("SIGNOZ_KEY2")
+
+# Endpoint **HTTP** obrigatório
+SIGNOZ_HTTP_ENDPOINT = "https://ingest.us.signoz.cloud:443/v1/traces"
 
 # ---------------------------
 # LOGS ESTRUTURADOS
@@ -49,22 +54,21 @@ logger.addHandler(handler)
 # ---------------------------
 resource = Resource.create({SERVICE_NAME: "supermercado-app"})
 
-trace.set_tracer_provider(
-    TracerProvider(
-        resource=resource
-    )
-)
-
+trace.set_tracer_provider(TracerProvider(resource=resource))
 tracer_provider = trace.get_tracer_provider()
 
-# ❗ FORMATO CERTO DOS HEADERS
+# Exporter correto (HTTP)
 otlp_exporter = OTLPSpanExporter(
-    endpoint=SIGNOZ_OTLP_URL,
-    insecure=False,
-    headers=(f"signoz-ingest-key={SIGNOZ_INGEST_KEY}",)
+    endpoint=SIGNOZ_HTTP_ENDPOINT,
+    headers={
+        "authorization": f"Bearer {SIGNOZ_KEY}"
+    }
 )
 
-tracer_provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
+# Processador assíncrono
+tracer_provider.add_span_processor(
+    BatchSpanProcessor(otlp_exporter)
+)
 
 # ---------------------------
 # MODELOS
@@ -180,9 +184,9 @@ if __name__ == "__main__":
     with app.app_context():
         db.create_all()
 
-        # Instrumentação OTel (CORRETA)
+        # Instrumentação OTel
         FlaskInstrumentor().instrument_app(app)
         SQLAlchemyInstrumentor().instrument(engine=db.engine)
 
-    logger.info("Servidor iniciado com OTel + SigNoz")
+    logger.info("Servidor iniciado com OTel + SigNoz HTTP exporter")
     app.run(host="0.0.0.0", port=80)
