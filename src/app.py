@@ -1,36 +1,82 @@
+import os
+import logging
+import json
 from flask import Flask, request, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
-import os
+from prometheus_client import make_wsgi_app
+from werkzeug.middleware.dispatcher import DispatcherMiddleware
 
+# ---------------------------
+# OpenTelemetry / SigNoz
+# ---------------------------
+from opentelemetry import trace
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+
+# ---------------------------
+# CONFIGURAÇÃO APP
+# ---------------------------
 app = Flask(__name__, static_folder="static", template_folder="static")
-
-# Cockroach URL (cockroachdb://...)
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
+SIGNOZ_OTLP_URL = os.getenv("SIGNOZ_OTLP_URL")
+SIGNOZ_INGEST_KEY = os.getenv("SIGNOZ_KEY2")
+
 # ---------------------------
-#      MODELOS
+# LOGS ESTRUTURADOS
+# ---------------------------
+logger = logging.getLogger("supermercado")
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+formatter = logging.Formatter(json.dumps({
+    "time": "%(asctime)s",
+    "level": "%(levelname)s",
+    "message": "%(message)s"
+}))
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+# ---------------------------
+# OpenTelemetry - TRACE
+# ---------------------------
+resource = Resource.create({SERVICE_NAME: "supermercado-app"})
+trace.set_tracer_provider(TracerProvider(resource=resource))
+tracer_provider = trace.get_tracer_provider()
+
+# Cabeçalho como dicionário, não tupla
+otlp_exporter = OTLPSpanExporter(
+    endpoint=SIGNOZ_OTLP_URL,
+    insecure=False,
+    headers={"x-signoz-ingest-key": SIGNOZ_INGEST_KEY}
+)
+tracer_provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
+
+# ---------------------------
+# MODELOS
 # ---------------------------
 class Categoria(db.Model):
     __tablename__ = "categorias"
     id = db.Column(db.String, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
 
-
 class Produto(db.Model):
     __tablename__ = "produtos"
-    id = db.Column(db.String, primary_key=True)          # STRING → UUID
+    id = db.Column(db.String, primary_key=True)
     nome = db.Column(db.String(200), nullable=False)
     preco = db.Column(db.Float, nullable=False)
     estoque = db.Column(db.Integer, nullable=False)
     categoria_id = db.Column(db.String, db.ForeignKey("categorias.id"), nullable=True)
 
-
 # ---------------------------
-#      FRONTEND
+# FRONTEND
 # ---------------------------
 @app.route("/")
 def index():
@@ -40,13 +86,13 @@ def index():
 def static_files(path):
     return send_from_directory("static", path)
 
-
 # ---------------------------
-#      API CRUD PRODUTOS
+# API PRODUTOS
 # ---------------------------
 @app.route("/produtos", methods=["GET"])
 def get_produtos():
     produtos = Produto.query.all()
+    logger.info("Listando produtos")
     return jsonify([
         {
             "id": str(p.id),
@@ -58,11 +104,9 @@ def get_produtos():
         for p in produtos
     ])
 
-
 @app.route("/produtos", methods=["POST"])
 def create_produto():
     data = request.json
-
     novo_id = db.session.execute(text("SELECT gen_random_uuid()")).scalar()
 
     p = Produto(
@@ -76,8 +120,8 @@ def create_produto():
     db.session.add(p)
     db.session.commit()
 
+    logger.info(f"Produto criado: {p.nome}")
     return jsonify({"message": "Produto criado", "id": p.id})
-
 
 @app.route("/produtos/<id>", methods=["PUT"])
 def update_produto(id):
@@ -92,8 +136,8 @@ def update_produto(id):
     produto.categoria_id = str(data["categoria_id"]) if data.get("categoria_id") else None
 
     db.session.commit()
+    logger.info(f"Produto atualizado: {produto.nome}")
     return jsonify({"message": "Atualizado"})
-
 
 @app.route("/produtos/<id>", methods=["DELETE"])
 def delete_produto(id):
@@ -103,26 +147,35 @@ def delete_produto(id):
 
     db.session.delete(produto)
     db.session.commit()
+    logger.info(f"Produto deletado: {produto.nome}")
     return jsonify({"message": "Deletado"})
 
-
 # ---------------------------
-#      API CATEGORIAS
+# API CATEGORIAS
 # ---------------------------
 @app.route("/categorias", methods=["GET"])
 def get_categorias():
     categorias = Categoria.query.all()
-    return jsonify([
-        {"id": str(c.id), "nome": c.nome} for c in categorias
-    ])
-
+    logger.info("Listando categorias")
+    return jsonify([{"id": str(c.id), "nome": c.nome} for c in categorias])
 
 # ---------------------------
-#      RUN
+# PROMETHEUS / METRICS
+# ---------------------------
+app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {
+    "/metrics": make_wsgi_app()
+})
+
+# ---------------------------
+# RUN
 # ---------------------------
 if __name__ == "__main__":
-    # Cria tabelas se não existirem
     with app.app_context():
+        # Cria tabelas
         db.create_all()
+        # Instrumenta Flask e SQLAlchemy dentro do app context
+        FlaskInstrumentor().instrument_app(app)
+        SQLAlchemyInstrumentor().instrument(engine=db.engine)
 
-    app.run(host="0.0.0.0", port=5000)
+    logger.info("Servidor iniciado com OTel + SigNoz")
+    app.run(host="0.0.0.0", port=80)
