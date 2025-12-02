@@ -43,7 +43,7 @@
           "value": "https://ingest.us.signoz.cloud:443"
         },
         {
-          "name": "SIGNOZ_INGEST_KEY",
+          "name": "SIGNOZ_KEY2",
           "value": "2ceecf63-9045-4206-97a7-d75bb2196313"
         },
         {
