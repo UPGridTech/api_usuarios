@@ -3,7 +3,7 @@
   "requiresCompatibilities": [
     "EC2"
   ],
-  "executionRoleArn": "arn:aws:iam::781581113404:role/LabRole",
+  "executionRoleArn": "arn:aws:iam::538368656684:role/LabRole",
   "cpu": "1024",
   "memory": "512",
   "networkMode": "awsvpc",
