@@ -65,6 +65,6 @@ jobs:
           ansible-playbook playbooks/qa-playbook.yml \
             -i "${VM_IP}," \
             -u "${{ secrets.ANSIBLE_USER }}" \
-            --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} pr_branch=${{ github.event.pull_request.head.ref }} vm_name=${{ github.event.inputs.vm_name }} github_token=${{ secrets.GITHUB_PAT }} postgres_user=${{ secrets.POSTGRES_USER }} postgres_password=${{ secrets.POSTGRES_PASSWORD }} postgres_db=${{ secrets.POSTGRES_DB }} ansible_ip=${VM_IP} app_path=/home/felipe/src/ signoz_Key=PF0rQtvZdo00lgWLndHcKih-g3eNNS1-Uz5k" \
+            --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} signoz_name=${{ github.event.pull_request.head.ref }} pr_branch=${{ github.event.pull_request.head.ref }} vm_name=${{ github.event.inputs.vm_name }} github_token=${{ secrets.GITHUB_PAT }} postgres_user=${{ secrets.POSTGRES_USER }} postgres_password=${{ secrets.POSTGRES_PASSWORD }} postgres_db=${{ secrets.POSTGRES_DB }} ansible_ip=${VM_IP} app_path=/home/felipe/src/ signoz_Key=PF0rQtvZdo00lgWLndHcKih-g3eNNS1-Uz5k" \
             --ssh-common-args='-o StrictHostKeyChecking=no' \
             -vvv
