@@ -46,15 +46,12 @@ variable vsphere_cluster_name{}
 
 variable template_name {}
 
-variable domain {}
+variable vm_name {}
 
-variable vm_count {}
+variable domain {}
 
 variable disk_size {}
 
 variable "num_cpu" {}
 
 variable "ram_memory" {}
-
-
-
