@@ -1,35 +1,48 @@
 name: Build e Teste na PR para Dev
 
-# O trigger 'workflow_dispatch' agora aceita entradas (inputs)
 on:
   pull_request:
-    branches:
-      - dev
+    branches: [dev]
     types: [opened, synchronize, reopened, closed]
+
   workflow_dispatch:
     inputs:
       action:
-        description: 'Ação de escalabilidade (set, up, down, auto). Relevante apenas para dispatch manual.'
+        description: "Ação de escalabilidade (set, up, down, destroy, auto)"
         required: false
       count:
-        description: 'Contagem exata de réplicas. Usado se action for "set".'
+        description: "Número exato de réplicas se action = 'set'"
         required: false
 
+# VARIÁVEL GLOBAL (avaliada no nível de job, não no nível root)
+# será redefinida dentro dos jobs
+env:
+  DEFAULT_WS: manual-dispatch
+
 jobs:
-  build-and-run:
+  init-steps:
     runs-on: self-hosted
-    
-    # Define variáveis para o ambiente, garantindo que 'PR_WORKSPACE' seja usado corretamente,
-    # mesmo quando o evento não é uma pull_request (como no workflow_dispatch)
-    env:
-      # Use o número da PR para o workspace se for uma PR, caso contrário, use um nome padrão.
-      PR_WS: ${{ (github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number)) || 'manual-dispatch' }}
+
+    outputs:
+      pr_ws: ${{ steps.setvars.outputs.pr_ws }}
+      pr_ref: ${{ steps.setvars.outputs.pr_ref }}
+      pr_number: ${{ steps.setvars.outputs.pr_number }}
 
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
 
-      # Não é necessário setar PR_WORKSPACE separadamente, pois usamos a variável de ambiente PR_WS acima.
+      - name: Calcular PR Workspace
+        id: setvars
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "pr_ws=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            echo "pr_ref=${{ github.event.pull_request.head.ref }}" >> $GITHUB_OUTPUT
+            echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          else
+            echo "pr_ws=${DEFAULT_WS}" >> $GITHUB_OUTPUT
+            echo "pr_ref=manual" >> $GITHUB_OUTPUT
+            echo "pr_number=0" >> $GITHUB_OUTPUT
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
@@ -39,50 +52,88 @@ jobs:
           aws-session-token: ${{ secrets.AWS_TOKEN_KEY }}
           aws-region: us-east-1
 
-      - name: Terraform Init + Select Workspace
+  terraform:
+    runs-on: self-hosted
+    needs: init
+
+    outputs:
+      vm_ips: ${{ steps.getips.outputs.vm_ips }}
+
+    if: |
+      always()
+
+    env:
+      PR_WS: ${{ needs.init.outputs.pr_ws }}
+      PR_REF: ${{ needs.init.outputs.pr_ref }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Terraform Init
         working-directory: terraform
         run: |
-          # O key agora usa a variável PR_WS que é definida no nível 'env'
           terraform init -reconfigure -input=false \
-            -backend-config="bucket=s3-bkt-s3nai" \
-            -backend-config="key=${{ env.PR_WS }}/terraform.tfstate" \
+            -backend-config="bucket=s3-bkt-senai-run" \
+            -backend-config="key=${PR_WS}/terraform.tfstate" \
             -backend-config="region=us-east-1" \
-            -backend-config="dynamodb_table=s3-bkt-s3nai-lock" \
+            -backend-config="dynamodb_table=s3-bkt-senai-run-lock" \
             -backend-config="encrypt=true"
 
-      - name: Terraform Apply (PR Open/Sync ou Dispatch 'set')
-        # Este passo é executado se NÃO for um evento 'closed' (PR) E se NÃO for um 'destroy' manual.
-        if: |
-          github.event.action != 'closed' && 
-          github.event.inputs.action != 'destroy'
+      - name: Terraform Apply
+        if: github.event.action != 'closed' && github.event.inputs.action != 'destroy'
         working-directory: terraform
-        run:        
-          terraform apply -var "vm_name=${{ github.event.pull_request.head.ref }}" -auto-approve
-      - name: Terraform Destroy (on PR closed ou Dispatch 'destroy')
+        run: |
+          terraform apply -var "vm_name=${PR_REF}" -auto-approve
+
+      - name: Terraform Destroy
         if: github.event.action == 'closed' || github.event.inputs.action == 'destroy'
         working-directory: terraform
         run: |
-          terraform destroy -var "vm_name=${{ github.event.pull_request.head.ref }}" -auto-approve
+          terraform destroy -var "vm_name=${PR_REF}" -auto-approve
 
-      - name: Obter todos os IPs das VMs
-        id: vm_ips
+      - name: Obter IPs
+        id: getips
+        if: github.event.action != 'closed' && github.event.inputs.action != 'destroy'
         working-directory: terraform
-        if: github.event.action != 'closed' && github.event.inputs.action != 'destroy'
         run: |
-          VM_IPS=$(terraform output -raw vm_ip)
-          echo "VM_IPS=$VM_IPS" >> $GITHUB_ENV
-          echo "IPs das VMs: $VM_IPS"
+          IPS=$(terraform output -raw vm_ip)
+          echo "vm_ips=$IPS" >> $GITHUB_OUTPUT
 
-      - name: Run Ansible on each VM
-        # Executa somente se o ambiente foi aplicado (não em destroy/close)
-        if: github.event.action != 'closed' && github.event.inputs.action != 'destroy'
+  ansible:
+    runs-on: self-hosted
+    needs: [init-steps, terraform]
+
+    if: |
+      github.event.action != 'closed' &&
+      github.event.inputs.action != 'destroy'
+
+    env:
+      VM_IPS: ${{ needs.terraform.outputs.vm_ips }}
+      PR_REF: ${{ needs.init.outputs.pr_ref }}
+      PR_NUMBER: ${{ needs.init.outputs.pr_number }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Executar Ansible em cada VM
         run: |
           for IP in $VM_IPS; do
             echo "=== Running Ansible on $IP ==="
+
             ansible-playbook playbooks/dev-playbook.yml \
               -i "${IP}," \
               -u "${{ secrets.ANSIBLE_USER }}" \
-              --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} pr_branch=${{ github.event.pull_request.head.ref }} pr_number=${{ github.event.pull_request.number }} github_token=${{ secrets.GITHUB_PAT }} postgres_user=${{ secrets.POSTGRES_USER }} postgres_password=${{ secrets.POSTGRES_PASSWORD }} postgres_db=${{ secrets.POSTGRES_DB }} signoz_Key="PF0rQtvZdo00lgWLndHcKih-g3eNNS1-Uz5k" app_path=/home/felipe/src/" \
-              --ssh-common-args='-o StrictHostKeyChecking=no' \
-              -vvv
+              --extra-vars "
+                ansible_password=${{ secrets.ANSIBLE_PASSWORD }}
+                pr_branch=${PR_REF}
+                pr_number=${PR_NUMBER}
+                github_token=${{ secrets.GITHUB_PAT }}
+                postgres_user=${{ secrets.POSTGRES_USER }}
+                postgres_password=${{ secrets.POSTGRES_PASSWORD }}
+                postgres_db=${{ secrets.POSTGRES_DB }}
+                signoz_Key=PF0rQtvZdo00lgWLndHcKih-g3eNNS1-Uz5k
+                app_path=/home/felipe/repo
+              " \
+              --ssh-common-args='-o StrictHostKeyChecking=no' -vvv
+
           done
