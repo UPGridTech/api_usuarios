@@ -1,4 +1,4 @@
-name: Autoscaling Runner
+name: Autoscaling DBCluster
 
 on:
   workflow_dispatch:
@@ -33,7 +33,7 @@ jobs:
         run: |
           terraform init -reconfigure -input=false \
             -backend-config="bucket=s3-bkt-senai-run" \
-            -backend-config="key=autoscaling/${{ github.event.inputs.vm_name }}/terraform.tfstate" \
+            -backend-config="key=autoscaling-db/${{ github.event.inputs.vm_name }}/terraform.tfstate" \
             -backend-config="region=us-east-1" \
             -backend-config="dynamodb_table=s3-bkt-senai-run-lock" \
             -backend-config="encrypt=true"
@@ -67,9 +67,9 @@ jobs:
         if: github.event.inputs.action == 'up'
         run: |
           echo "=== Running Ansible on $VM_IP ==="
-          ansible-playbook playbooks/qa-playbook.yml \
+          ansible-playbook playbooks/db-scale.yml \
             -i "${VM_IP}," \
             -u "${{ secrets.ANSIBLE_USER }}" \
-            --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} signoz_name=${{ github.event.pull_request.head.ref }} vm_name=${{ github.event.inputs.vm_name }} github_token=${{ secrets.GITHUB_PAT }} postgres_user=${{ secrets.POSTGRES_USER }} postgres_password=${{ secrets.POSTGRES_PASSWORD }} postgres_db=${{ secrets.POSTGRES_DB }} ansible_ip=${VM_IP} app_path=/home/felipe/src/ signoz_Key="${{ secrets.sigkey }}"" \
+            --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} vm_name=${{ github.event.inputs.vm_name }} github_token=${{ secrets.GITHUB_PAT }} postgres_user=${{ secrets.POSTGRES_USER }} postgres_password=${{ secrets.POSTGRES_PASSWORD }} postgres_db=${{ secrets.POSTGRES_DB }} ansible_ip=${VM_IP} app_path=/home/felipe/src/ signoz_Key="${{ secrets.sigkey }}"" \
             --ssh-common-args='-o StrictHostKeyChecking=no' \
             -vvv
