@@ -3,10 +3,10 @@
   "requiresCompatibilities": [
     "EC2"
   ],
-  "executionRoleArn": "arn:aws:iam::781581113404:role/LabRole",
+  "executionRoleArn": "arn:aws:iam::538368656684:role/LabRole",
   "cpu": "1024",
   "memory": "512",
-  "networkMode": "awsvpc", 
+  "networkMode": "awsvpc",
   "runtimePlatform": {
     "operatingSystemFamily": "LINUX",
     "cpuArchitecture": "X86_64"
@@ -17,7 +17,7 @@
       "cpu": 1024,
       "memory": 256,
       "essential": true,
-      "image": "", 
+      "image": "",
       "portMappings": [
         {
           "containerPort": 80,
@@ -33,7 +33,7 @@
           "awslogs-stream-prefix": "ecs"
         }
       },
-"environment": [
+      "environment": [
         {
           "name": "SERVICE_NAME",
           "value": "supermercado-api-prod"
@@ -43,12 +43,12 @@
           "value": "https://ingest.us.signoz.cloud:443"
         },
         {
-          "name": "SIGNOZ_INGEST_KEY",
+          "name": "SIGNOZ_KEY2",
           "value": "2ceecf63-9045-4206-97a7-d75bb2196313"
         },
         {
           "name": "DATABASE_URL",
-          "value": "cockroachdb://admin@10.0.1.20:26257/defaultdb?sslmode=disable"
+          "value": "cockroachdb://admin@10.0.3.120:26257/defaultdb?sslmode=disable"
         },
         {
           "name": "SQLALCHEMY_DATABASE_URI",

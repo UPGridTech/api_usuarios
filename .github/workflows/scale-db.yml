@@ -32,10 +32,10 @@ jobs:
         working-directory: terraform
         run: |
           terraform init -reconfigure -input=false \
-            -backend-config="bucket=bkt-senai-02" \
+            -backend-config="bucket=s3-bkt-senai-run" \
             -backend-config="key=autoscaling-db/${{ github.event.inputs.vm_name }}/terraform.tfstate" \
             -backend-config="region=us-east-1" \
-            -backend-config="dynamodb_table=bkt-state-upgrid-tech-lock" \
+            -backend-config="dynamodb_table=s3-bkt-senai-run-lock" \
             -backend-config="encrypt=true"
 
       - name: Terraform Apply (action = up)
@@ -70,6 +70,6 @@ jobs:
           ansible-playbook playbooks/db-scale.yml \
             -i "${VM_IP}," \
             -u "${{ secrets.ANSIBLE_USER }}" \
-            --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} vm_name=${{ github.event.inputs.vm_name }} github_token=${{ secrets.GITHUB_PAT }} postgres_user=${{ secrets.POSTGRES_USER }} postgres_password=${{ secrets.POSTGRES_PASSWORD }} postgres_db=${{ secrets.POSTGRES_DB }} ansible_ip=${VM_IP} app_path=/home/felipe/src/ signoz_Key=PF0rQtvZdo00lgWLndHcKih-g3eNNS1-Uz5k" \
+            --extra-vars "ansible_password=${{ secrets.ANSIBLE_PASSWORD }} vm_name=${{ github.event.inputs.vm_name }} github_token=${{ secrets.GITHUB_PAT }} postgres_user=${{ secrets.POSTGRES_USER }} postgres_password=${{ secrets.POSTGRES_PASSWORD }} postgres_db=${{ secrets.POSTGRES_DB }} ansible_ip=${VM_IP} app_path=/home/felipe/src/ signoz_Key="${{ secrets.sigkey }}"" \
             --ssh-common-args='-o StrictHostKeyChecking=no' \
             -vvv
