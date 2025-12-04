@@ -2,9 +2,10 @@
 name: CI/CD da Aplicação para ECS/EC2
 
 on:
-  push:
+  pull_request:
     branches:
       - prod
+    types: [opened]
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
@@ -21,6 +22,8 @@ jobs:
     steps:
       - name: Checkout do Código
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
 
       # 1. Configura Credenciais AWS
       - name: Configurar Credenciais AWS
