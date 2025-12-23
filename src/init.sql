@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS produtos (
 INSERT INTO produtos (nome, preco, categoria_id, estoque)
 VALUES
 ('Água Mineral', 2.50, 1, 100),
-('Refrigerante 2L', 7.50, 1, 50),
+('Refrigerantes 2L', 7.50, 1, 50),
 ('Arroz 5kg', 25.00, 2, 30),
 ('Sabonete', 3.00, 3, 200)
 ON CONFLICT (nome) DO NOTHING;
