@@ -1,5 +1,5 @@
 vsphere_user     = "administrator@upgrid.local"
-vsphere_password = "UpGr1d\"135"
+vsphere_password = ""
 vsphere_server   = "vcenter.upgrid.local"
 vsphere_datacenter = "senai-dc"
 vsphere_datastore  = "datastore1"
